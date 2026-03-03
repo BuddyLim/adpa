@@ -1,0 +1,14 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      GCP_KEY: ${GCP_KEY}
+      LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
+    volumes:
+      # Mount the local app directory to the container's working directory
+      - ./app:/app/app

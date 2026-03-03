@@ -1,0 +1,12 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi[standard]>=0.135.1",
+    "logfire>=4.25.0",
+    "opentelemetry-instrumentation-google-genai>=0.7b0",
+    "pydantic-ai>=1.64.0",
+]

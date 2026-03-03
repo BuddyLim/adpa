@@ -1,0 +1,22 @@
+# Stage 1: Builder
+FROM python:3.11-slim AS builder
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/
+WORKDIR /app
+COPY app/pyproject.toml app/uv.lock ./
+RUN uv sync --frozen --no-cache
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+WORKDIR /app
+# Copy the virtual environment and application code from the builder stage
+COPY --from=builder /app/.venv /app/.venv
+COPY app ./app
+
+# Add the virtual environment to the PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+# Command to run the application using uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

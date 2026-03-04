@@ -9,4 +9,12 @@ dependencies = [
     "logfire>=4.25.0",
     "opentelemetry-instrumentation-google-genai>=0.7b0",
     "pydantic-ai>=1.64.0",
+    "pydantic-evals>=1.64.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pydantic-evals>=1.0.0",
 ]

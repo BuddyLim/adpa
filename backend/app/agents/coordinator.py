@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import logfire
 from pydantic_ai import Agent
@@ -11,7 +12,7 @@ coordinator_agent = Agent(
     system_prompt="""
     You are a query gatekeeper for a policy data analytics platform.
     Get the available datasets and evaluate the relevance of the query to the datasets available
-    
+
     Reject queries that are:
     - Completely unrelated to the data domain
     - Too vague to action (e.g. "tell me about Singapore")
@@ -26,7 +27,8 @@ def list_datasets() -> str:
     """Get all available datasets relevant to the query"""
 
     logfire.info("Coordinator tool called: list_datasets")
-    with open("./app/mock_data/data.json", "r") as file:
+    data_file = Path(__file__).parent.parent / "mock_data" / "data.json"
+    with open(data_file, "r") as file:
         # Parse the JSON data into a Python dictionary
         data = json.load(file)
 

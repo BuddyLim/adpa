@@ -3,20 +3,14 @@ import logfire
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from pydantic_ai import Agent
-from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.providers.google import GoogleProvider
 
-from app.config import settings
 from asyncio import Queue
 
-router = APIRouter()
+from app.services.pipeline import run_pipeline
 
-_provider = GoogleProvider(api_key=settings.gcp_key)
-_model = GoogleModel("gemini-2.0-flash", provider=_provider)
-agent = Agent(_model, system_prompt="You are a helpful assistant.")
+router = APIRouter()
 
 
 class QueryRequest(BaseModel):
@@ -39,21 +33,26 @@ async def query(
         logfire.info(f"Task query: {task_id}", task_id=task_id)
 
         async def produce():
-            async with agent.run_stream(request.question) as result:
-                async for chunk in result.stream_text(delta=True):
+            try:
+                async for chunk in run_pipeline(
+                    task_id=task_id, query=request.question
+                ):
                     await queue.put(chunk)
-            await queue.put(None)  # sentinel to signal end
-            del _streams[task_id]
+                await queue.put(None)  # sentinel to signal end
+
+            finally:
+                del _streams[task_id]
 
         background_tasks.add_task(produce)
         return {"task_id": task_id}
 
     except Exception as err:
         logfire.error(
-            f"Task error: {task_id} - {err}", task_id=task_id, err=JSONResponse(err)
+            f"Task error: {task_id} - {err}",
+            task_id=task_id,
         )
 
-        return HTTPException(status_code=500)
+        raise HTTPException(status_code=500)
 
     # return StreamingResponse(stream_response(), media_type="text/plain")
 
@@ -71,4 +70,4 @@ async def get_query_stream(id: str):
                 break
             yield chunk
 
-    return StreamingResponse(consume(), media_type="text/plain")
+    return StreamingResponse(consume(), media_type="text/event-stream")

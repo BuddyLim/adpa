@@ -8,6 +8,7 @@ services:
       - "8000:8000"
     environment:
       GCP_KEY: ${GCP_KEY}
+      OPENAI_KEY: ${OPENAI_KEY}
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN}
     volumes:
       # Mount the local app directory to the container's working directory

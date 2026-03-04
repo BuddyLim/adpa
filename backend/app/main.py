@@ -1,4 +1,5 @@
 import csv
+import json
 
 import logfire
 from fastapi import FastAPI
@@ -7,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.router import query
 
 logfire.configure()
-logfire.instrument_google_genai()
+
 logfire.instrument_openai()
+logfire.instrument_google_genai()
 
 app = FastAPI()
 
@@ -27,13 +29,10 @@ def root():
     return {"message": "Hello from APDA!"}
 
 
-@app.get("/mock")
+@app.get("/display_mock_data")
 def mock_data():
-    with open(
-        "./app/mock_data/ResidentWorkingPersonsAged15YearsandOverbyUsualModeofTransporttoWorkAgeGroupandSexGeneralHouseholdSurvey2015.csv",
-        newline="",
-    ) as f:
-        csv_reader = csv.reader(f)
-        csv_headings = next(csv_reader)
+    with open("./app/mock_data/data.json", "r") as file:
+        # Parse the JSON data into a Python dictionary
+        data = json.load(file)
 
-        return csv_headings
+        return data

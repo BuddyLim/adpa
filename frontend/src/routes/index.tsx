@@ -425,13 +425,13 @@ function VisualizationPanel({ data }: { data: VisualizationData }) {
     <div className="h-full overflow-y-auto p-6 space-y-6">
       <div className="space-y-2">
         <p className="island-kicker">Enriched query</p>
-        <p className="font-semibold text-[var(--sea-ink)] leading-snug">{data.query}</p>
+        <p className="font-semibold text-(--sea-ink) leading-snug">{data.query}</p>
       </div>
 
       {data.reason && (
         <div className="space-y-2">
           <p className="island-kicker">Insight</p>
-          <p className="text-sm text-[var(--sea-ink-soft)] leading-relaxed">{data.reason}</p>
+          <p className="text-sm text-(--sea-ink-soft) leading-relaxed">{data.reason}</p>
         </div>
       )}
 

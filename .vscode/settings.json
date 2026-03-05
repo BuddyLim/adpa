@@ -1,5 +1,6 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/backend/app/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}/backend"],
   "files.watcherExclude": {
     "**/routeTree.gen.ts": true
   },

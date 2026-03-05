@@ -1,10 +1,19 @@
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
-    gcp_key: str
+    """Application settings loaded from environment variables or .env file."""
 
-    model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
+    openai_key: Optional[str] = Field(default=None)
+    gcp_key: Optional[str] = Field(default=None)
+    database_url: str = Field(default="sqlite+aiosqlite:////app/data/apda.db")
+
+    model_config = SettingsConfigDict(
+        env_file="../.env",
+        extra="ignore",
+    )
 
 
 settings = Settings()

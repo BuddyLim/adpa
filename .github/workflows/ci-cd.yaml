@@ -12,6 +12,8 @@ jobs:
     outputs:
       backend: ${{ steps.changes.outputs.backend }}
       frontend: ${{ steps.changes.outputs.frontend }}
+    permissions:
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3

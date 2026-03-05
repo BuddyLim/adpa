@@ -25,7 +25,9 @@ async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
 
   const { task_id } = (await initResponse.json()) as { task_id: string }
 
-  const streamResponse = await fetch(`http://localhost:8000/query/${task_id}/stream`)
+  const streamResponse = await fetch(
+    `http://localhost:8000/query/${task_id}/stream`,
+  )
 
   if (!streamResponse.ok) {
     throw new Error(`Stream request failed: ${streamResponse.statusText}`)
@@ -67,4 +69,5 @@ export const chatQueryOptions = (question: string) =>
       streamFn: () => chatAnswer(question),
     }),
     staleTime: Infinity,
+    retry: false,
   })

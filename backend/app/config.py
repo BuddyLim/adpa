@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     openai_key: Optional[str] = Field(default=None)
     gcp_key: Optional[str] = Field(default=None)
+    database_url: str = Field(default="sqlite+aiosqlite:////app/data/apda.db")
 
     model_config = SettingsConfigDict(
         env_file="../.env",

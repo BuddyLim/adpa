@@ -3,7 +3,7 @@ FROM python:3.11-slim AS builder
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/
 WORKDIR /app
-COPY app/pyproject.toml app/uv.lock ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-cache
 
 # Stage 2: Runtime
@@ -12,6 +12,9 @@ WORKDIR /app
 # Copy the virtual environment and application code from the builder stage
 COPY --from=builder /app/.venv /app/.venv
 COPY app ./app
+COPY alembic.ini ./
+COPY alembic ./alembic
+RUN mkdir -p /app/data
 
 # Add the virtual environment to the PATH
 ENV PATH="/app/.venv/bin:$PATH"

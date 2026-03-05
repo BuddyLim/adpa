@@ -13,3 +13,5 @@ services:
     volumes:
       # Mount the local app directory to the container's working directory
       - ./app:/app/app
+      # Bind mount — data persists AND is accessible to GUI tools on the host
+      - ./data:/app/data

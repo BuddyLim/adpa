@@ -3,5 +3,10 @@
     "title": "Commuting Habits of Singapore's Working Residents (2015)",
     "summary": "A Singapore government dataset from SingStats showing how ~2.1 million resident workers commuted to work in 2015, broken down by transport mode, age, and sex.",
     "dataset_file": "./app/mock_data/ResidentWorkingPersonsAged15YearsandOverbyUsualModeofTransporttoWorkAgeGroupandSexGeneralHouseholdSurvey2015.csv"
+  },
+  {
+    "title": "Commuting Habits of Singapore's Working Residents (2010)",
+    "summary": "A Singapore government dataset from SingStats showing how ~2.1 million resident workers commuted to work in 2010, broken down by transport mode, age, and sex.",
+    "dataset_file": "./app/mock_data/ResidentWorkingPersonsAged15YearsandOverbyUsualModeofTransporttoWorkAgeGroupandSexCensusofPopulation2010.csv"
   }
 ]

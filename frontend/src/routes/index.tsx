@@ -3,7 +3,7 @@ import type { ResultMessage, StatusMessage } from '#/queries/chat.queries'
 import { chatQueryOptions } from '#/queries/chat.queries'
 import { useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 export const Route = createFileRoute('/')({ component: App })
 
@@ -119,7 +119,8 @@ function PipelineResult({ result }: { result: ResultMessage }) {
 }
 
 function ChatMessage({ question }: { question: string }) {
-  const { error, data = [], isFetching } = useQuery(chatQueryOptions(question))
+  const options = useMemo(() => chatQueryOptions(question), [])
+  const { error, data = [], isFetching } = useQuery(options)
 
   if (error) {
     return (

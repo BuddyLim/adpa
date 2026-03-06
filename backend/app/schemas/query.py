@@ -130,7 +130,12 @@ class AnalysisTextEvent(BaseModel):
     chunk: str  # streaming text delta from the narrative agent
 
 
+class ErrorEvent(BaseModel):
+    type: Literal["error"] = "error"
+    message: str
+
+
 SSEEvent = Annotated[
-    Union[StatusEvent, ResultEvent, ToolCallEvent, ToolResultEvent, AnalysisTextEvent],
+    Union[StatusEvent, ResultEvent, ToolCallEvent, ToolResultEvent, AnalysisTextEvent, ErrorEvent],
     Field(discriminator="type"),
 ]

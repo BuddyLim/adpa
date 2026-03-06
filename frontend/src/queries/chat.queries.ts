@@ -171,12 +171,26 @@ const AnalysisTextMessageSchema = z.object({
   chunk: z.string(),
 })
 
+const ErrorMessageSchema = z.object({
+  type: z.literal('error'),
+  message: z.string(),
+})
+
+// Client-side only — not from backend SSE. Propagates conversation metadata.
+const ConversationStartedMessageSchema = z.object({
+  type: z.literal('conversation_started'),
+  conversation_id: z.string(),
+  title: z.string().nullable(),
+})
+
 const PipelineMessageSchema = z.union([
   StatusMessageSchema,
   ResultMessageSchema,
   ToolCallMessageSchema,
   ToolResultMessageSchema,
   AnalysisTextMessageSchema,
+  ErrorMessageSchema,
+  ConversationStartedMessageSchema,
 ])
 
 export type StatusMessage = z.infer<typeof StatusMessageSchema>
@@ -184,20 +198,65 @@ export type ResultMessage = z.infer<typeof ResultMessageSchema>
 export type ToolCallMessage = z.infer<typeof ToolCallMessageSchema>
 export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>
 export type AnalysisTextMessage = z.infer<typeof AnalysisTextMessageSchema>
+export type ErrorMessage = z.infer<typeof ErrorMessageSchema>
+export type ConversationStartedMessage = z.infer<typeof ConversationStartedMessageSchema>
 export type PipelineMessage = z.infer<typeof PipelineMessageSchema>
 
-async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
+// ─── History query schemas ─────────────────────────────────────────────────
+
+export const ConversationMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string(),
+})
+
+export const PipelineRunResultSchema = z.object({
+  pipeline_run_id: z.string(),
+  status: z.string(),
+  enhanced_query: z.string().nullable(),
+  created_at: z.string(),
+  completed_at: z.string().nullable(),
+  datasets: z.array(z.object({ id: z.string(), title: z.string() })),
+  steps: z.array(z.object({ message: z.string() })).default([]),
+  analysis: PipelineAnalysisResultSchema.nullable(),
+})
+
+const ConversationMessagesResponseSchema = z.object({
+  conversation_id: z.string(),
+  messages: z.array(ConversationMessageSchema),
+})
+
+const ConversationResultsResponseSchema = z.object({
+  conversation_id: z.string(),
+  results: z.array(PipelineRunResultSchema),
+})
+
+export type ConversationMessage = z.infer<typeof ConversationMessageSchema>
+export type PipelineRunResult = z.infer<typeof PipelineRunResultSchema>
+
+// ─── Live chat generator ──────────────────────────────────────────────────
+
+async function* chatAnswer(
+  question: string,
+  conversationId?: string | null,
+): AsyncGenerator<PipelineMessage> {
   const initResponse = await fetch('http://localhost:8000/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, conversation_id: conversationId ?? null }),
   })
 
   if (!initResponse.ok) {
     throw new Error(`Chat request failed: ${initResponse.statusText}`)
   }
 
-  const { task_id } = (await initResponse.json()) as { task_id: string }
+  const { task_id, conversation_id, title } = (await initResponse.json()) as {
+    task_id: string
+    conversation_id: string
+    title: string | null
+  }
+
+  // Yield conversation metadata first so the component can propagate the id
+  yield { type: 'conversation_started', conversation_id, title }
 
   const streamResponse = await fetch(
     `http://localhost:8000/query/${task_id}/stream`,
@@ -228,7 +287,6 @@ async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
         try {
           const raw: unknown = JSON.parse(line.slice(6))
           const parsed = PipelineMessageSchema.safeParse(raw)
-          console.log(parsed)
           if (parsed.success) yield parsed.data
         } catch {
           // ignore malformed events
@@ -238,12 +296,38 @@ async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
   }
 }
 
-export const chatQueryOptions = (question: string) =>
+export const chatQueryOptions = (question: string, conversationId?: string | null) =>
   queryOptions({
-    queryKey: ['chat', question],
+    queryKey: ['chat', question, conversationId ?? 'new'],
     queryFn: streamedQuery({
-      streamFn: () => chatAnswer(question),
+      streamFn: () => chatAnswer(question, conversationId),
     }),
     staleTime: Infinity,
     retry: false,
+  })
+
+// ─── History query options ────────────────────────────────────────────────
+
+export const conversationMessagesQueryOptions = (conversationId: string) =>
+  queryOptions({
+    queryKey: ['conversation-messages', conversationId],
+    queryFn: async () => {
+      const res = await fetch(`http://localhost:8000/conversations/${conversationId}/messages`)
+      if (!res.ok) throw new Error('Failed to load conversation messages')
+      const data: unknown = await res.json()
+      return ConversationMessagesResponseSchema.parse(data)
+    },
+    staleTime: Infinity,
+  })
+
+export const conversationResultsQueryOptions = (conversationId: string) =>
+  queryOptions({
+    queryKey: ['conversation-results', conversationId],
+    queryFn: async () => {
+      const res = await fetch(`http://localhost:8000/conversations/${conversationId}/results`)
+      if (!res.ok) throw new Error('Failed to load conversation results')
+      const data: unknown = await res.json()
+      return ConversationResultsResponseSchema.parse(data)
+    },
+    staleTime: Infinity,
   })

@@ -6,6 +6,7 @@ import logfire
 from opentelemetry import context as otel_context
 
 from app.repositories.pipeline import PipelineRepository, get_pipeline_repo
+from app.schemas.query import ErrorEvent
 from app.services.pipeline import run_pipeline
 
 # Module-level so streams are shared across all QueryService instances
@@ -18,8 +19,9 @@ class QueryService:
 
     async def initiate(
         self, question: str, conversation_id: str | None
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str | None]:
         task_id = str(uuid4())
+        title: str | None = None
 
         if conversation_id:
             conversation = await self.repo.get_conversation(conversation_id)
@@ -28,9 +30,11 @@ class QueryService:
             conv_id = conversation.id
         else:
             conv_id = await self.repo.create_conversation()
+            title = question[:80]
+            await self.repo.update_conversation_title(conv_id, title)
 
         message_id = await self.repo.create_user_message(conv_id, question)
-        await self.repo.create_pipeline_run(run_id=task_id, message_id=message_id)
+        await self.repo.create_pipeline_run(run_id=task_id, message_id=message_id, conversation_id=conv_id)
 
         queue: Queue = Queue()
         _streams[task_id] = queue
@@ -71,6 +75,8 @@ class QueryService:
                             error=str(err),
                             exc_info=True,
                         )
+                        error_event = ErrorEvent(message=str(err))
+                        await queue.put(f"data: {error_event.model_dump_json()}\n\n")
                     finally:
                         await queue.put(None) 
                         _streams.pop(task_id, None)
@@ -78,7 +84,7 @@ class QueryService:
                 otel_context.detach(token)
 
         self._produce = produce
-        return task_id, conv_id
+        return task_id, conv_id, title
 
     def get_producer(self):
         return self._produce

@@ -7,6 +7,13 @@ import { EmptyCanvas } from './visualization/EmptyCanvas'
 import { VisualizationPanel } from './visualization/VisualizationPanel'
 import type { VisualizationData } from './visualization/VisualizationPanel'
 import { ChatMessage } from './chat/ChatMessage'
+import { HistoricalConversationView } from './chat/HistoricalConversationView'
+import {
+  ConversationSidebar,
+  getStoredConversations,
+  saveStoredConversation,
+} from './ConversationSidebar'
+import type { StoredConversation } from './ConversationSidebar'
 
 function SendIcon() {
   return (
@@ -25,82 +32,162 @@ function SendIcon() {
   )
 }
 
-const MIN_CHAT_WIDTH = 280
-const MAX_CHAT_WIDTH = 280
-
 export function App() {
-  const [questions, setQuestions] = useState<string[]>([])
+  // Live chat state
+  const [questions, setQuestions] = useState<
+    Array<{ question: string; convId: string | null }>
+  >([])
   const [currentQuestion, setCurrentQuestion] = useState('')
   const [visualizationItems, setVisualizationItems] = useState<
     VisualizationData[]
   >([])
-  const [showViz, setShowViz] = useState(true)
-  const isDragging = useRef(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
+  // Conversation / history state
+  const currentConvIdRef = useRef<string | null>(null)
+  const [savedConversations, setSavedConversations] = useState<
+    StoredConversation[]
+  >(() => getStoredConversations())
+  const [historicalConvId, setHistoricalConvId] = useState<string | null>(null)
+
+  const isHistoricalMode = historicalConvId !== null
+
+  const bottomRef = useRef<HTMLDivElement>(null)
   const hasData = visualizationItems.length > 0
+
+  // Auto-scroll to bottom on new live messages
+  useEffect(() => {
+    if (!isHistoricalMode) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [questions, isHistoricalMode])
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+
+  const handleConversationStarted = useCallback(
+    (id: string, title: string | null) => {
+      if (!currentConvIdRef.current) {
+        currentConvIdRef.current = id
+        const conv: StoredConversation = {
+          id,
+          title:
+            title !== null ? title : (questions[0]?.question ?? 'Conversation'),
+          createdAt: new Date().toISOString(),
+        }
+        saveStoredConversation(conv)
+        setSavedConversations(getStoredConversations())
+      }
+    },
+    [questions],
+  )
+
+  const handleAccepted = useCallback(
+    (result: ResultMessage, analysisResult?: PipelineAnalysisResult) => {
+      setVisualizationItems((prev) => [
+        ...prev,
+        {
+          query: result.refined_query ?? result.reason ?? '',
+          reason: result.reason ?? '',
+          analysisResult,
+        },
+      ])
+    },
+    [],
+  )
 
   const submitMessage = () => {
     const q = currentQuestion.trim()
     if (!q) return
-    setQuestions((prev) => [...prev, q])
+    // Switch to live mode if user types while viewing history
+    setHistoricalConvId(null)
+    setVisualizationItems([])
+    setQuestions((prev) => [
+      ...prev,
+      { question: q, convId: currentConvIdRef.current },
+    ])
     setCurrentQuestion('')
   }
 
-  // Auto-scroll chat to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [questions])
-
-  // Auto-show viz panel when data arrives
-  useEffect(() => {
-    if (hasData) setShowViz(true)
-  }, [hasData])
-
-  const handleAccepted = (
-    result: ResultMessage,
-    analysisResult?: PipelineAnalysisResult,
-  ) => {
-    setVisualizationItems((prev) => [
-      ...prev,
-      {
-        query: result.refined_query ?? result.reason ?? '',
-        reason: result.reason ?? '',
-        analysisResult,
-      },
-    ])
+  const handleNewChat = () => {
+    currentConvIdRef.current = null
+    setQuestions([])
+    setVisualizationItems([])
+    setHistoricalConvId(null)
   }
 
-  const vizVisible = hasData && showViz
+  const handleSelectConversation = (id: string) => {
+    setHistoricalConvId(id)
+    setVisualizationItems([])
+  }
+
+  const handleHistoricalVizReady = useCallback((items: VisualizationData[]) => {
+    setVisualizationItems(items)
+  }, [])
+
+  // Active sidebar id: selected historical conversation or current live one
+  const activeSidebarId = isHistoricalMode
+    ? historicalConvId
+    : currentConvIdRef.current
 
   return (
     <main className="flex" style={{ height: 'calc(100vh - 57px)' }}>
-      {/* Left — Chat */}
-      <div className="shrink-0 flex flex-col overflow-hidden bg-(--foam) w-1/3  border-r border-(--line)">
+      {/* Sidebar */}
+      <ConversationSidebar
+        conversations={savedConversations}
+        activeId={activeSidebarId}
+        onSelect={handleSelectConversation}
+        onNewChat={handleNewChat}
+      />
+
+      {/* Chat panel */}
+      <div
+        className="shrink-0 flex flex-col overflow-hidden bg-(--foam) border-r border-(--line)"
+        style={{ width: 320 }}
+      >
         {/* Header */}
         <div className="px-4 py-3 border-b border-(--line) bg-(--header-bg) backdrop-blur-lg shrink-0 flex items-center justify-between">
           <div>
             <p className="font-semibold text-sm text-(--sea-ink)">
-              Analytics Assistant
+              {isHistoricalMode
+                ? (savedConversations.find((c) => c.id === historicalConvId)
+                    ?.title ?? 'Past Conversation')
+                : 'Analytics Assistant'}
             </p>
             <p className="text-xs text-(--sea-ink-soft)">
-              Ask about Singapore policy data
+              {isHistoricalMode
+                ? 'Viewing history'
+                : 'Ask about Singapore policy data'}
             </p>
           </div>
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-(--header-bg)">
-          {questions.length === 0 && (
-            <p className="text-sm text-gray-400 text-center mt-8">
-              Hi! Ask me anything about Singaporean data related matters, I can
-              help you find relevant datasets and prepare visualisations.
-            </p>
+          {isHistoricalMode ? (
+            <HistoricalConversationView
+              conversationId={historicalConvId}
+              onVisualizationReady={handleHistoricalVizReady}
+            />
+          ) : (
+            <>
+              {questions.length === 0 && (
+                <p className="text-sm text-gray-400 text-center mt-8">
+                  Hi! Ask me anything about Singaporean data related matters, I
+                  can help you find relevant datasets and prepare
+                  visualisations.
+                </p>
+              )}
+              {questions.map(({ question, convId }) => (
+                <ChatMessage
+                  key={`${question}-${convId ?? 'new'}`}
+                  question={question}
+                  conversationId={convId}
+                  onAccepted={handleAccepted}
+                  onConversationStarted={handleConversationStarted}
+                />
+              ))}
+              <div ref={bottomRef} />
+            </>
           )}
-          {questions.map((q) => (
-            <ChatMessage key={q} question={q} onAccepted={handleAccepted} />
-          ))}
-          <div ref={bottomRef} />
         </div>
 
         {/* Input */}
@@ -113,7 +200,11 @@ export function App() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') submitMessage()
               }}
-              placeholder="Ask about Singapore data…"
+              placeholder={
+                isHistoricalMode
+                  ? 'Type to start a new chat…'
+                  : 'Ask about Singapore data…'
+              }
             />
             <button
               onClick={submitMessage}
@@ -126,19 +217,14 @@ export function App() {
         </div>
       </div>
 
-      {/* Right — Canvas (only when data exists and toggled on) */}
-      {vizVisible && (
-        <div className="flex-1 overflow-hidden border-r border-(--line) bg-[radial-gradient(circle at 18% 12%, rgba(6, 182, 212, 0.06), transparent 38%), radial-gradient(circle at 82% 20%, rgba(139, 92, 246, 0.05), transparent 40%)]">
+      {/* Visualization panel */}
+      <div className="flex-1 overflow-hidden border-r border-(--line) bg-[radial-gradient(circle at 18% 12%, rgba(6, 182, 212, 0.06), transparent 38%), radial-gradient(circle at 82% 20%, rgba(139, 92, 246, 0.05), transparent 40%)]">
+        {hasData ? (
           <VisualizationPanel items={visualizationItems} />
-        </div>
-      )}
-
-      {/* Empty canvas — only when no data yet */}
-      {!hasData && (
-        <div className="flex-1 overflow-hidden border-r border-(--line) bg-[radial-gradient(circle at 18% 12%, rgba(6, 182, 212, 0.06), transparent 38%), radial-gradient(circle at 82% 20%, rgba(139, 92, 246, 0.05), transparent 40%)]">
+        ) : (
           <EmptyCanvas />
-        </div>
-      )}
+        )}
+      </div>
     </main>
   )
 }

@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    JSON,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -99,6 +100,12 @@ class PipelineRun(Base):
     datasets: Mapped[list["Dataset"]] = relationship(
         secondary="pipeline_run_datasets", back_populates="pipeline_runs"
     )
+    extraction_results: Mapped[list["ExtractionResultRecord"]] = relationship(
+        back_populates="pipeline_run", order_by="ExtractionResultRecord.created_at"
+    )
+    normalization_result: Mapped["NormalizationResultRecord | None"] = relationship(
+        back_populates="pipeline_run", uselist=False
+    )
 
 
 class PipelineStep(Base):
@@ -142,3 +149,35 @@ class PipelineRunDataset(Base):
     dataset_id: Mapped[str] = mapped_column(
         String, ForeignKey("datasets.id", ondelete="CASCADE"), primary_key=True
     )
+
+
+class ExtractionResultRecord(Base):
+    __tablename__ = "extraction_results"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    pipeline_run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    source_dataset: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    rows: Mapped[list] = mapped_column(JSON, nullable=False)
+    join_keys: Mapped[list] = mapped_column(JSON, nullable=False)
+    sql_query: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="extraction_results")
+
+
+class NormalizationResultRecord(Base):
+    __tablename__ = "normalization_results"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    pipeline_run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    unified_rows: Mapped[list] = mapped_column(JSON, nullable=False)
+    columns: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="normalization_result")

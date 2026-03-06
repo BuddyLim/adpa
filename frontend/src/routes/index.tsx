@@ -12,10 +12,14 @@ import {
   Area,
 } from 'recharts'
 import { useQuery } from '@tanstack/react-query'
-import {
-  chatQueryOptions
+import { chatQueryOptions } from '#/queries/chat.queries'
+import type {
+  ResultMessage,
+  StatusMessage,
+  ToolCallMessage,
+  ToolResultMessage,
 } from '#/queries/chat.queries'
-import type {ResultMessage, StatusMessage} from '#/queries/chat.queries';
+import { TOOL_COMPONENTS } from '#/components/tools'
 
 export const Route = createFileRoute('/')({ component: App })
 
@@ -71,7 +75,9 @@ function EmptyCanvas() {
       <DatabaseIcon />
       <div className="text-center space-y-1">
         <p className="font-semibold text-[var(--sea-ink)]">No data yet</p>
-        <p className="text-sm">Ask a question to see data visualisations here</p>
+        <p className="text-sm">
+          Ask a question to see data visualisations here
+        </p>
       </div>
     </div>
   )
@@ -81,15 +87,29 @@ function EmptyCanvas() {
 
 interface Dataset {
   kpis: { label: string; value: string; sub: string }[]
-  bar: { label: string; color: string; formatValue?: (v: number) => string; data: { year: string; value: number }[] }
-  spark: { label: string; unit: string; color: string; data: { year: string; value: number }[] }
+  bar: {
+    label: string
+    color: string
+    formatValue?: (v: number) => string
+    data: { year: string; value: number }[]
+  }
+  spark: {
+    label: string
+    unit: string
+    color: string
+    data: { year: string; value: number }[]
+  }
 }
 
 const DATASETS: Record<string, Dataset> = {
   housing: {
     kpis: [
       { label: 'HDB completions', value: '26,400', sub: '2024 (projected)' },
-      { label: 'Median resale price', value: '$565k', sub: '4-room flat, 2024' },
+      {
+        label: 'Median resale price',
+        value: '$565k',
+        sub: '4-room flat, 2024',
+      },
       { label: 'New BTO launches', value: '19,600', sub: 'FY2024 units' },
     ],
     bar: {
@@ -107,7 +127,7 @@ const DATASETS: Record<string, Dataset> = {
       ],
     },
     spark: {
-      label: 'Median resale flat price (S$\'000)',
+      label: "Median resale flat price (S$'000)",
       unit: 'k',
       color: '#7c3aed',
       data: [
@@ -124,7 +144,11 @@ const DATASETS: Record<string, Dataset> = {
 
   employment: {
     kpis: [
-      { label: 'Employment rate', value: '68.6%', sub: '2024 resident workforce' },
+      {
+        label: 'Employment rate',
+        value: '68.6%',
+        sub: '2024 resident workforce',
+      },
       { label: 'Unemployment rate', value: '1.9%', sub: 'Resident, Q3 2024' },
       { label: 'Labour force', value: '2.41M', sub: 'Residents, 2024' },
     ],
@@ -160,9 +184,21 @@ const DATASETS: Record<string, Dataset> = {
 
   education: {
     kpis: [
-      { label: 'University enrolment', value: '81,200', sub: 'AY2023/24 undergrads' },
-      { label: 'Participation rate', value: '51.5%', sub: 'Uni entry rate, 2024' },
-      { label: 'Preschool coverage', value: '96.8%', sub: 'K1–K2 enrolment, 2024' },
+      {
+        label: 'University enrolment',
+        value: '81,200',
+        sub: 'AY2023/24 undergrads',
+      },
+      {
+        label: 'Participation rate',
+        value: '51.5%',
+        sub: 'Uni entry rate, 2024',
+      },
+      {
+        label: 'Preschool coverage',
+        value: '96.8%',
+        sub: 'K1–K2 enrolment, 2024',
+      },
     ],
     bar: {
       label: 'University undergraduate enrolment',
@@ -305,12 +341,18 @@ const DATASETS: Record<string, Dataset> = {
 
 function pickDataset(query: string): Dataset {
   const q = query.toLowerCase()
-  if (/hdb|bto|flat|resale|housing|property|rent/.test(q)) return DATASETS.housing
-  if (/employ|job|work|labour|labor|unemploy|workforce/.test(q)) return DATASETS.employment
-  if (/educat|school|university|student|learn|skill|psle/.test(q)) return DATASETS.education
-  if (/health|hospital|medic|doctor|moh|clinic|disease/.test(q)) return DATASETS.healthcare
-  if (/transport|mrt|bus|train|ev|electric|car|vehicle|road/.test(q)) return DATASETS.transport
-  if (/populat|demograph|age|citizen|birth|fertility|senior/.test(q)) return DATASETS.population
+  if (/hdb|bto|flat|resale|housing|property|rent/.test(q))
+    return DATASETS.housing
+  if (/employ|job|work|labour|labor|unemploy|workforce/.test(q))
+    return DATASETS.employment
+  if (/educat|school|university|student|learn|skill|psle/.test(q))
+    return DATASETS.education
+  if (/health|hospital|medic|doctor|moh|clinic|disease/.test(q))
+    return DATASETS.healthcare
+  if (/transport|mrt|bus|train|ev|electric|car|vehicle|road/.test(q))
+    return DATASETS.transport
+  if (/populat|demograph|age|citizen|birth|fertility|senior/.test(q))
+    return DATASETS.population
   // default to housing as most common topic
   return DATASETS.housing
 }
@@ -334,17 +376,45 @@ function BarChart({
       <p className="island-kicker">{label}</p>
       <div className="island-shell rounded-xl p-4">
         <ResponsiveContainer width="100%" height={220}>
-          <ReBarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
-            <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-            <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={fmt} tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }} axisLine={false} tickLine={false} width={52} />
+          <ReBarChart
+            data={data}
+            margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+          >
+            <CartesianGrid
+              vertical={false}
+              stroke="var(--line)"
+              strokeDasharray="3 3"
+            />
+            <XAxis
+              dataKey="year"
+              tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tickFormatter={fmt}
+              tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }}
+              axisLine={false}
+              tickLine={false}
+              width={52}
+            />
             <Tooltip
-              formatter={(v: number) => [fmt(v), label]}
-              contentStyle={{ background: 'var(--surface-strong)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number | undefined) => [fmt(v ?? 0), label]}
+              contentStyle={{
+                background: 'var(--surface-strong)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
               labelStyle={{ color: 'var(--sea-ink)', fontWeight: 600 }}
               cursor={{ fill: 'var(--line)' }}
             />
-            <Bar dataKey="value" fill={color} radius={[4, 4, 0, 0]} maxBarSize={48} />
+            <Bar
+              dataKey="value"
+              fill={color}
+              radius={[4, 4, 0, 0]}
+              maxBarSize={48}
+            />
           </ReBarChart>
         </ResponsiveContainer>
       </div>
@@ -375,28 +445,70 @@ function SparkLine({
     <div className="space-y-1">
       <div className="flex items-baseline justify-between">
         <p className="island-kicker">{label}</p>
-        <span className="text-xs font-semibold" style={{ color: isUp ? 'var(--palm)' : '#e11d48' }}>
-          {isUp ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}{unit} vs prior year
+        <span
+          className="text-xs font-semibold"
+          style={{ color: isUp ? 'var(--palm)' : '#e11d48' }}
+        >
+          {isUp ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}
+          {unit} vs prior year
         </span>
       </div>
       <div className="island-shell rounded-xl p-4">
         <ResponsiveContainer width="100%" height={160}>
-          <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+          <AreaChart
+            data={data}
+            margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+          >
             <defs>
-              <linearGradient id={`area-fill-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient
+                id={`area-fill-${color.replace('#', '')}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
                 <stop offset="5%" stopColor={color} stopOpacity={0.18} />
                 <stop offset="95%" stopColor={color} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 3" />
-            <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }} axisLine={false} tickLine={false} />
-            <YAxis tickFormatter={fmt} tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }} axisLine={false} tickLine={false} width={52} domain={['auto', 'auto']} />
+            <CartesianGrid
+              vertical={false}
+              stroke="var(--line)"
+              strokeDasharray="3 3"
+            />
+            <XAxis
+              dataKey="year"
+              tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tickFormatter={fmt}
+              tick={{ fontSize: 11, fill: 'var(--sea-ink-soft)' }}
+              axisLine={false}
+              tickLine={false}
+              width={52}
+              domain={['auto', 'auto']}
+            />
             <Tooltip
-              formatter={(v: number) => [fmt(v), label]}
-              contentStyle={{ background: 'var(--surface-strong)', border: '1px solid var(--line)', borderRadius: 8, fontSize: 12 }}
+              formatter={(v: number | undefined) => [fmt(v ?? 0), label]}
+              contentStyle={{
+                background: 'var(--surface-strong)',
+                border: '1px solid var(--line)',
+                borderRadius: 8,
+                fontSize: 12,
+              }}
               labelStyle={{ color: 'var(--sea-ink)', fontWeight: 600 }}
             />
-            <Area type="monotone" dataKey="value" stroke={color} strokeWidth={2} fill={`url(#area-fill-${color.replace('#', '')})`} dot={{ r: 3.5, fill: color, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={color}
+              strokeWidth={2}
+              fill={`url(#area-fill-${color.replace('#', '')})`}
+              dot={{ r: 3.5, fill: color, strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -406,7 +518,15 @@ function SparkLine({
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function StatCard({
+  label,
+  value,
+  sub,
+}: {
+  label: string
+  value: string
+  sub: string
+}) {
   return (
     <div className="island-shell rounded-xl p-4 space-y-0.5">
       <p className="island-kicker">{label}</p>
@@ -425,20 +545,29 @@ function VisualizationPanel({ data }: { data: VisualizationData }) {
     <div className="h-full overflow-y-auto p-6 space-y-6">
       <div className="space-y-2">
         <p className="island-kicker">Enriched query</p>
-        <p className="font-semibold text-(--sea-ink) leading-snug">{data.query}</p>
+        <p className="font-semibold text-(--sea-ink) leading-snug">
+          {data.query}
+        </p>
       </div>
 
       {data.reason && (
         <div className="space-y-2">
           <p className="island-kicker">Insight</p>
-          <p className="text-sm text-(--sea-ink-soft) leading-relaxed">{data.reason}</p>
+          <p className="text-sm text-(--sea-ink-soft) leading-relaxed">
+            {data.reason}
+          </p>
         </div>
       )}
 
       {/* KPI row */}
       <div className="grid grid-cols-3 gap-3">
         {ds.kpis.map((kpi) => (
-          <StatCard key={kpi.label} label={kpi.label} value={kpi.value} sub={kpi.sub} />
+          <StatCard
+            key={kpi.label}
+            label={kpi.label}
+            value={kpi.value}
+            sub={kpi.sub}
+          />
         ))}
       </div>
 
@@ -471,7 +600,11 @@ function Spinner() {
 
 function CheckIcon() {
   return (
-    <svg className="w-3 h-3 text-[var(--palm)] shrink-0" viewBox="0 0 12 12" fill="currentColor">
+    <svg
+      className="w-3 h-3 text-[var(--palm)] shrink-0"
+      viewBox="0 0 12 12"
+      fill="currentColor"
+    >
       <path d="M10 3L5 8.5 2 5.5l-1 1 4 4 6-7-1-1z" />
     </svg>
   )
@@ -479,13 +612,30 @@ function CheckIcon() {
 
 function PipelineSteps({
   steps,
+  invocations,
   isFetching,
 }: {
   steps: StatusMessage[]
+  invocations: ToolInvocation[]
   isFetching: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
-  if (steps.length === 0) return null
+  if (steps.length === 0 && invocations.length === 0) return null
+
+  const pendingInvocation = invocations.find((inv) => inv.pending)
+  const lastCompletedInvocation = [...invocations]
+    .reverse()
+    .find((inv) => !inv.pending)
+
+  let headerText = steps.at(-1)?.message ?? 'Working…'
+
+  if (!isFetching) {
+    headerText = lastCompletedInvocation?.tool
+      ? (TOOL_LABELS[lastCompletedInvocation.tool]?.done ?? 'Done')
+      : 'Done'
+  } else if (pendingInvocation) {
+    headerText = TOOL_LABELS[pendingInvocation.tool]?.pending ?? headerText
+  }
 
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden text-sm bg-[var(--surface-strong)] shadow-sm">
@@ -494,9 +644,7 @@ function PipelineSteps({
         onClick={() => setExpanded(!expanded)}
       >
         {isFetching ? <Spinner /> : <CheckIcon />}
-        <span className="flex-1 text-xs font-medium">
-          {isFetching ? (steps.at(-1)?.message ?? 'Working…') : 'Done'}
-        </span>
+        <span className="flex-1 text-xs font-medium">{headerText}</span>
         <svg
           className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
           viewBox="0 0 12 12"
@@ -508,13 +656,37 @@ function PipelineSteps({
         </svg>
       </button>
       {expanded && (
-        <div className="px-3 pb-2 pt-1 space-y-1 border-t border-[var(--line)]">
+        <div className="px-3 pb-4 pt-1 space-y-2 border-t border-[var(--line)]">
           {steps.map((step, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs text-[var(--sea-ink-soft)] py-0.5">
-              {i === steps.length - 1 && isFetching ? <Spinner /> : <CheckIcon />}
+            <div
+              key={i}
+              className="flex items-center gap-2 text-xs text-[var(--sea-ink-soft)] py-0.5"
+            >
+              {i === steps.length - 1 && isFetching ? (
+                <Spinner />
+              ) : (
+                <CheckIcon />
+              )}
               <span>{step.message}</span>
             </div>
           ))}
+          {invocations.length > 0 && (
+            <div className="space-y-2 pt-1">
+              {invocations.map((inv, i) => {
+                const Component = TOOL_COMPONENTS[inv.tool]
+                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+                if (!Component) return null
+                return (
+                  <Component
+                    key={`${inv.tool}-${i}`}
+                    args={inv.args}
+                    result={inv.result}
+                    pending={inv.pending}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -536,7 +708,9 @@ function ResultBubble({ result }: { result: ResultMessage }) {
   return (
     <div className="rounded-xl px-4 py-3 text-sm bg-[var(--surface-strong)] border border-[var(--line)] space-y-1">
       {result.refined_query && (
-        <p className="font-medium text-[var(--sea-ink)]">{result.refined_query}</p>
+        <p className="font-medium text-[var(--sea-ink)]">
+          {result.refined_query}
+        </p>
       )}
       {result.reason && (
         <p className="text-xs text-[var(--sea-ink-soft)]">{result.reason}</p>
@@ -544,6 +718,68 @@ function ResultBubble({ result }: { result: ResultMessage }) {
     </div>
   )
 }
+
+// ─── Tool Labels ──────────────────────────────────────────────────────────────
+
+const TOOL_LABELS: Partial<
+  Record<ToolCallMessage['tool'], { pending: string; done: string }>
+> = {
+  'coordinator/list_datasets': {
+    pending: 'Loading datasets…',
+    done: 'Datasets available',
+  },
+  'coordinator/datasets_selected': {
+    pending: 'Selecting datasets…',
+    done: 'Datasets selected',
+  },
+  'pipeline/extraction': {
+    pending: 'Extracting data…',
+    done: 'Data extracted',
+  },
+  'pipeline/normalization': {
+    pending: 'Normalizing data…',
+    done: 'Data normalized',
+  },
+}
+
+// ─── Tool Invocations ─────────────────────────────────────────────────────────
+
+interface ToolInvocation {
+  tool: ToolCallMessage['tool']
+  args: ToolCallMessage['args']
+  result: ToolResultMessage['result'] | undefined
+  pending: boolean
+}
+
+function buildToolInvocations(
+  calls: ToolCallMessage[],
+  results: ToolResultMessage[],
+): ToolInvocation[] {
+  // Partial so key lookups return T | undefined — required for the null-safety below.
+  const resultIndexByTool: Partial<Record<ToolCallMessage['tool'], number>> = {}
+  const resultsByTool: Partial<
+    Record<ToolCallMessage['tool'], ToolResultMessage[]>
+  > = {}
+
+  for (const r of results) {
+    const bucket = (resultsByTool[r.tool] ??= [])
+    bucket.push(r)
+  }
+
+  return calls.map((call) => {
+    const idx = resultIndexByTool[call.tool] ?? 0
+    const matchingResult = resultsByTool[call.tool]?.[idx]
+    resultIndexByTool[call.tool] = idx + 1
+    return {
+      tool: call.tool,
+      args: call.args,
+      result: matchingResult?.result,
+      pending: !matchingResult,
+    }
+  })
+}
+
+// ─── Chat Message ─────────────────────────────────────────────────────────────
 
 function ChatMessage({
   question,
@@ -556,8 +792,18 @@ function ChatMessage({
   const { error, data = [], isFetching } = useQuery(options)
   const calledRef = useRef(false)
 
-  const statusMessages = data.filter((m): m is StatusMessage => m.type === 'status')
+  const statusMessages = data.filter(
+    (m): m is StatusMessage => m.type === 'status',
+  )
+  const toolCalls = data.filter(
+    (m): m is ToolCallMessage => m.type === 'tool_call',
+  )
+  const toolResults = data.filter(
+    (m): m is ToolResultMessage => m.type === 'tool_result',
+  )
   const result = data.find((m): m is ResultMessage => m.type === 'result')
+
+  const toolInvocations = buildToolInvocations(toolCalls, toolResults)
 
   useEffect(() => {
     if (result?.accepted && !calledRef.current) {
@@ -575,10 +821,14 @@ function ChatMessage({
         </div>
       </div>
 
-      {/* Pipeline status + result */}
-      {(statusMessages.length > 0 || error) && (
+      {/* Pipeline status + tool cards + result */}
+      {(statusMessages.length > 0 || toolInvocations.length > 0 || error) && (
         <div className="space-y-2">
-          <PipelineSteps steps={statusMessages} isFetching={isFetching} />
+          <PipelineSteps
+            steps={statusMessages}
+            invocations={toolInvocations}
+            isFetching={isFetching}
+          />
           {error && (
             <p className="text-xs text-red-500 px-1">Error: {error.message}</p>
           )}
@@ -594,10 +844,8 @@ function ChatMessage({
 function App() {
   const [questions, setQuestions] = useState<string[]>([])
   const [currentQuestion, setCurrentQuestion] = useState('')
-  const [visualizationData, setVisualizationData] = useState<VisualizationData | null>({
-    query: 'HDB flat completions and resale prices in Singapore (2018–2024)',
-    reason: 'HDB completions dipped to a low of 9,800 in 2022 due to COVID-19 construction delays, before ramping up sharply. Median resale prices rose steadily throughout, reaching a record $565k for a 4-room flat in 2024.',
-  })
+  const [visualizationData, setVisualizationData] =
+    useState<VisualizationData | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const submitMessage = () => {
@@ -614,15 +862,15 @@ function App() {
 
   const handleAccepted = (result: ResultMessage) => {
     setVisualizationData({
-      query: result.refined_query ?? result.reason,
-      reason: result.reason,
+      query: result.refined_query ?? result.reason ?? '',
+      reason: result.reason ?? '',
     })
   }
 
   return (
     <main className="flex" style={{ height: 'calc(100vh - 57px)' }}>
       {/* Left — Canvas */}
-      <div className="flex-1 overflow-hidden border-r border-[var(--line)] bg-[var(--foam)]">
+      <div className="flex-1 overflow-hidden border-r border-[var(--line)] bg-[radial-gradient(circle at 18% 12%, rgba(6, 182, 212, 0.06), transparent 38%), radial-gradient(circle at 82% 20%, rgba(139, 92, 246, 0.05), transparent 40%)]">
         {visualizationData ? (
           <VisualizationPanel data={visualizationData} />
         ) : (
@@ -634,15 +882,20 @@ function App() {
       <div className="w-[400px] shrink-0 flex flex-col overflow-hidden bg-[var(--foam)]">
         {/* Header */}
         <div className="px-4 py-3 border-b border-[var(--line)] bg-[var(--header-bg)] backdrop-blur-lg shrink-0">
-          <p className="font-semibold text-sm text-[var(--sea-ink)]">Analytics Assistant</p>
-          <p className="text-xs text-[var(--sea-ink-soft)]">Ask about Singapore policy data</p>
+          <p className="font-semibold text-sm text-[var(--sea-ink)]">
+            Analytics Assistant
+          </p>
+          <p className="text-xs text-[var(--sea-ink-soft)]">
+            Ask about Singapore policy data
+          </p>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[var(--sand)]">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[var(--header-bg)]">
           {questions.length === 0 && (
-            <p className="text-sm text-[var(--sea-ink-soft)] text-center mt-8">
-              Hi! Ask me anything about Singapore policy data — I can help you find relevant datasets and prepare visualisations.
+            <p className="text-sm text-[var(--sea-ink-soft)] text-center mt-8 text-gray-500">
+              Hi! Ask me anything about Singaporean data related matters, I can
+              help you find relevant datasets and prepare visualisations.
             </p>
           )}
           {questions.map((q) => (
@@ -658,7 +911,9 @@ function App() {
               className="flex-1 px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white text-[var(--sea-ink)] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[var(--lagoon)] focus:ring-offset-1"
               value={currentQuestion}
               onChange={(e) => setCurrentQuestion(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') submitMessage() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitMessage()
+              }}
               placeholder="Ask about Singapore data…"
             />
             <button

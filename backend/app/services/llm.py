@@ -18,7 +18,7 @@ def get_llm_model_with_fallback():
     primary_model = OpenAIResponsesModel("chatgpt-4o-latest", provider=primary_provider)
 
     secondary_provider = GoogleProvider(api_key=settings.gcp_key)
-    secondary_model = GoogleModel("gemini-2.0-flash", provider=secondary_provider)
+    secondary_model = GoogleModel("gemini-3-flash-preview", provider=secondary_provider)
 
     model = FallbackModel(primary_model, secondary_model)
 

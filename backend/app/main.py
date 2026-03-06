@@ -51,9 +51,8 @@ async def lifespan(app: FastAPI):
 
 
 logfire.configure()
-
-logfire.instrument_openai()
-logfire.instrument_google_genai()
+logfire.instrument_pydantic_ai()
+logfire.instrument_httpx(capture_all=True)
 logfire.instrument_sqlalchemy(engine=database.engine)
 app = FastAPI(lifespan=lifespan)
 

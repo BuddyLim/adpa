@@ -1,10 +1,50 @@
+import asyncio
 import json
 
 import logfire
+from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
 
 from app.agents.coordinator import CoordinatorDeps, coordinator_agent
+from app.agents.extraction import ExtractionDeps, PeerSchema, extraction_agent, load_schema
+from app.agents.normalization import run_normalization
 from app.repositories.pipeline import PipelineRepository
-from app.schemas.query import MessageType
+from app.schemas.query import MessageType, NormalizationResult, ResultEvent, ToolCallEvent, ToolResultEvent
+
+
+def _build_tool_events(messages: list, agent_name: str) -> list[ToolCallEvent | ToolResultEvent]:
+    """Extract tool_call / tool_result SSE events from a completed agent run's messages."""
+    events: list[ToolCallEvent | ToolResultEvent] = []
+
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    args = part.args
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except (json.JSONDecodeError, TypeError):
+                            args = {}
+                    elif not isinstance(args, dict):
+                        args = {}
+                    events.append(ToolCallEvent(
+                        tool=f"{agent_name}/{part.tool_name}",
+                        args=args,
+                    ))
+        elif isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    try:
+                        result_val = json.loads(part.content)
+                    except (json.JSONDecodeError, TypeError):
+                        result_val = str(part.content)
+                    events.append(ToolResultEvent(
+                        tool=f"{agent_name}/{part.tool_name}",
+                        result=result_val,
+                    ))
+
+    return events
+
 
 
 async def run_pipeline(
@@ -42,7 +82,18 @@ async def run_pipeline(
             logfire.error("coordinator agent failed", task_id=task_id, error=str(err), exc_info=True)
             raise
 
+    # Emit coordinator tool events
+    for event in _build_tool_events(plan.all_messages(), "coordinator"):
+        yield f"data: {event.model_dump_json()}\n\n"
+
     decision = plan.output
+
+    # Emit dataset selection event
+    if decision.dataset_selected:
+        selected_titles = [ds.title for ds in decision.dataset_selected]
+        yield f"data: {ToolCallEvent(tool='coordinator/datasets_selected', args={}).model_dump_json()}\n\n"
+        yield f"data: {ToolResultEvent(tool='coordinator/datasets_selected', result={'datasets': selected_titles}).model_dump_json()}\n\n"
+
     logfire.info(
         "coordinator decision",
         task_id=task_id,
@@ -53,7 +104,7 @@ async def run_pipeline(
 
     if not decision.accepted:
         logfire.info("pipeline rejected", task_id=task_id, reason=decision.reason)
-        yield f"data: {json.dumps({'type': MessageType.RESULT, 'accepted': decision.accepted, 'reason': decision.reason, 'refined_query': decision.enhanced_query})}\n\n"
+        yield f"data: {ResultEvent(accepted=decision.accepted, reason=decision.reason, refined_query=decision.enhanced_query).model_dump_json()}\n\n"
         with logfire.span("persist rejection", task_id=task_id):
             try:
                 await pipeline_repo.complete_run(pipeline_run_id, decision)
@@ -63,10 +114,11 @@ async def run_pipeline(
                 raise
         return
 
+
     if not decision.dataset_selected:
         logfire.warn("no dataset selected", task_id=task_id)
         no_dataset_reason = "Could not find relevant dataset"
-        yield f"data: {json.dumps({'type': MessageType.RESULT, 'accepted': False, 'reason': no_dataset_reason, 'refined_query': decision.enhanced_query})}\n\n"
+        yield f"data: {ResultEvent(accepted=False, reason=no_dataset_reason, refined_query=decision.enhanced_query).model_dump_json()}\n\n"
         with logfire.span("persist no-dataset result", task_id=task_id):
             try:
                 await pipeline_repo.complete_run(pipeline_run_id, decision)
@@ -78,9 +130,8 @@ async def run_pipeline(
 
     # Step: dataset found
     dataset_titles = [ds.title for ds in decision.dataset_selected]
-    step_msg = f"Dataset found - Using: {dataset_titles}"
+    step_msg = f"Dataset(s) found: {dataset_titles}"
     logfire.info("dataset selected", task_id=task_id, datasets=dataset_titles)
-    yield f"data: {json.dumps({'type': MessageType.STATUS, 'message': step_msg})}\n\n"
 
     with logfire.span("pipeline step", step_order=step_order, message=step_msg):
         try:
@@ -89,7 +140,125 @@ async def run_pipeline(
             logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
             raise
 
-    yield f"data: {json.dumps({'type': MessageType.RESULT, 'accepted': decision.accepted, 'reason': decision.reason, 'refined_query': decision.enhanced_query})}\n\n"
+    # Fetch prior conversation turns (exclude the current user message — last item)
+    all_messages = await pipeline_repo.get_messages(conversation_id)
+    conversation_history = all_messages[:-1] if all_messages else []
+
+    # Load all dataset schemas upfront so each extraction agent can see its peers
+    all_schemas: list[PeerSchema] = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: [load_schema(ds.path, ds.title) for ds in decision.dataset_selected] # type: ignore
+    )
+
+    async def extraction_task(path: str, title: str, ref: int):
+        with logfire.span(f"extraction #{ref}", task_id=task_id, query=decision.enhanced_query, title=title):
+            try:
+                peer_schemas = [s for s in all_schemas if s.title != title]
+
+                history_text = ""
+                if conversation_history:
+                    history_text = (
+                        "Prior conversation context:\n"
+                        + "\n".join(
+                            f"{m['role'].upper()}: {m['content']}"
+                            for m in conversation_history
+                        )
+                        + "\n\n"
+                    )
+
+                peer_text = ""
+                if peer_schemas:
+                    peer_text = "Peer datasets being extracted in parallel:\n"
+                    for peer in peer_schemas:
+                        cols = ", ".join(f"{c['name']} ({c['type']})" for c in peer.columns)
+                        peer_text += f"- {peer.title}: {cols}\n"
+                    peer_text += (
+                        "\nAlign your column selection and join_keys with the above so that "
+                        "the normalization step can merge results without guessing mappings.\n\n"
+                    )
+
+                with ExtractionDeps(
+                    dataset_path=path,
+                    dataset_title=title,
+                    peer_schemas=peer_schemas,
+                    conversation_history=conversation_history,
+                ) as deps:
+                    result = await extraction_agent.run(
+                        f"""
+                        {history_text}
+
+                        {peer_text}
+
+                        Extract data relevant to this query: {decision.enhanced_query}""",
+                        deps=deps,
+                    )
+                return result
+            except Exception as err:
+                logfire.error("extraction agent failed", task_id=task_id, title=title, error=str(err), exc_info=True)
+                raise
+
+    # Emit a single extraction start event
+    yield f"data: {ToolCallEvent(tool='pipeline/extraction', args={'datasets': dataset_titles}).model_dump_json()}\n\n"
+
+    task_list = [
+        asyncio.create_task(extraction_task(ds.path, ds.title, i))
+        for i, ds in enumerate(decision.dataset_selected)
+    ]
+    extraction_runs = await asyncio.gather(*task_list)
+    extraction_results = [r.output for r in extraction_runs]
+    logfire.info("extraction complete", task_id=task_id, n_datasets=len(extraction_results))
+
+    # Emit a single extraction result event
+    total_rows = sum(len(r.rows) for r in extraction_results)
+    yield f"data: {ToolResultEvent(tool='pipeline/extraction', result={'datasets': [{'title': r.source_dataset, 'row_count': len(r.rows)} for r in extraction_results], 'total_rows': total_rows}).model_dump_json()}\n\n"
+
+    with logfire.span("persist extraction results", task_id=task_id):
+        try:
+            await pipeline_repo.save_extraction_results(pipeline_run_id, extraction_results)
+        except Exception as err:
+            logfire.error("failed to persist extraction results", task_id=task_id, error=str(err), exc_info=True)
+            raise
+    
+    if len(extraction_results) > 1:
+        # Step: normalize
+        step_order += 1
+        step_msg = "Normalizing data across sources..."
+
+        with logfire.span("pipeline step", step_order=step_order, message=step_msg):
+            try:
+                await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+            except Exception as err:
+                logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
+                raise
+
+        # Emit a single normalization start event
+        yield f"data: {ToolCallEvent(tool='pipeline/normalization', args={'n_sources': len(extraction_results), 'datasets': dataset_titles}).model_dump_json()}\n\n"
+
+        with logfire.span("normalization", task_id=task_id):
+            try:
+                normalization_result, _ = await run_normalization(extraction_results, decision.enhanced_query)
+            except Exception as err:
+                logfire.error("normalization agent failed", task_id=task_id, error=str(err), exc_info=True)
+                raise
+
+        # Emit a single normalization result event
+        yield f"data: {ToolResultEvent(tool='pipeline/normalization', result={'unified_rows': len(normalization_result.unified_rows), 'columns': normalization_result.columns}).model_dump_json()}\n\n"
+    else:
+        # Single dataset — skip normalization agent, map directly
+        er = extraction_results[0]
+        columns = list(er.rows[0].keys()) if er.rows else []
+        normalization_result = NormalizationResult(
+            notes="Single dataset — normalization skipped.",
+            unified_rows=er.rows,
+            columns=columns,
+        )
+
+    with logfire.span("persist normalization result", task_id=task_id):
+        try:
+            await pipeline_repo.save_normalization_result(pipeline_run_id, normalization_result)
+        except Exception as err:
+            logfire.error("failed to persist normalization result", task_id=task_id, error=str(err), exc_info=True)
+            raise
 
     with logfire.span("persist result", task_id=task_id, datasets=dataset_titles):
         try:
@@ -98,5 +267,7 @@ async def run_pipeline(
         except Exception as err:
             logfire.error("failed to persist result", task_id=task_id, error=str(err), exc_info=True)
             raise
+
+    yield f"data: {ResultEvent(accepted=decision.accepted, reason=decision.reason, refined_query=decision.enhanced_query).model_dump_json()}\n\n"
 
     logfire.info("pipeline completed", task_id=task_id)

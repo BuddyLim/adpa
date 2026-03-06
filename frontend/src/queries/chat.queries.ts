@@ -1,16 +1,132 @@
+'use client'
+
 import {
   queryOptions,
   experimental_streamedQuery as streamedQuery,
 } from '@tanstack/react-query'
+import { z } from 'zod'
 
-export type StatusMessage = { type: 'status'; message: string }
-export type ResultMessage = {
-  type: 'result'
-  accepted: boolean
-  reason: string
-  refined_query?: string | null
-}
-export type PipelineMessage = StatusMessage | ResultMessage
+// ─── Per-tool arg schemas ─────────────────────────────────────────────────────
+// To add a new tool: add its Args + Result schemas here, then add variants to
+// ToolCallMessageSchema / ToolResultMessageSchema below, then create a card in
+// tools/index.tsx.
+
+const ListDatasetsArgsSchema = z.object({})
+const DatasetsSelectedArgsSchema = z.object({})
+const PipelineExtractionArgsSchema = z.object({
+  datasets: z.array(z.string()),
+})
+const PipelineNormalizationArgsSchema = z.object({
+  n_sources: z.number(),
+  datasets: z.array(z.string()),
+})
+
+export type ListDatasetsArgs = z.infer<typeof ListDatasetsArgsSchema>
+export type DatasetsSelectedArgs = z.infer<typeof DatasetsSelectedArgsSchema>
+export type PipelineExtractionArgs = z.infer<typeof PipelineExtractionArgsSchema>
+export type PipelineNormalizationArgs = z.infer<typeof PipelineNormalizationArgsSchema>
+
+// ─── Per-tool result schemas ──────────────────────────────────────────────────
+
+const ListDatasetsResultSchema = z.array(
+  z.object({
+    title: z.string(),
+    path: z.string(),
+    description: z.string().optional(),
+  }),
+)
+
+const DatasetsSelectedResultSchema = z.object({
+  datasets: z.array(z.string()),
+})
+
+const PipelineExtractionResultSchema = z.object({
+  datasets: z.array(z.object({ title: z.string(), row_count: z.number() })),
+  total_rows: z.number(),
+})
+
+const PipelineNormalizationResultSchema = z.object({
+  unified_rows: z.number(),
+  columns: z.array(z.string()),
+})
+
+export type ListDatasetsResult = z.infer<typeof ListDatasetsResultSchema>
+export type DatasetsSelectedResult = z.infer<typeof DatasetsSelectedResultSchema>
+export type PipelineExtractionResult = z.infer<typeof PipelineExtractionResultSchema>
+export type PipelineNormalizationResult = z.infer<typeof PipelineNormalizationResultSchema>
+
+// ─── Discriminated message schemas ────────────────────────────────────────────
+
+const StatusMessageSchema = z.object({
+  type: z.literal('status'),
+  message: z.string(),
+})
+
+const ResultMessageSchema = z.object({
+  type: z.literal('result'),
+  accepted: z.boolean(),
+  reason: z.string().optional(),
+  refined_query: z.string().optional(),
+})
+
+const ToolCallMessageSchema = z.discriminatedUnion('tool', [
+  z.object({
+    type: z.literal('tool_call'),
+    tool: z.literal('coordinator/list_datasets'),
+    args: ListDatasetsArgsSchema,
+  }),
+  z.object({
+    type: z.literal('tool_call'),
+    tool: z.literal('coordinator/datasets_selected'),
+    args: DatasetsSelectedArgsSchema,
+  }),
+  z.object({
+    type: z.literal('tool_call'),
+    tool: z.literal('pipeline/extraction'),
+    args: PipelineExtractionArgsSchema,
+  }),
+  z.object({
+    type: z.literal('tool_call'),
+    tool: z.literal('pipeline/normalization'),
+    args: PipelineNormalizationArgsSchema,
+  }),
+])
+
+const ToolResultMessageSchema = z.discriminatedUnion('tool', [
+  z.object({
+    type: z.literal('tool_result'),
+    tool: z.literal('coordinator/list_datasets'),
+    result: ListDatasetsResultSchema,
+  }),
+  z.object({
+    type: z.literal('tool_result'),
+    tool: z.literal('coordinator/datasets_selected'),
+    result: DatasetsSelectedResultSchema,
+  }),
+  z.object({
+    type: z.literal('tool_result'),
+    tool: z.literal('pipeline/extraction'),
+    result: PipelineExtractionResultSchema,
+  }),
+  z.object({
+    type: z.literal('tool_result'),
+    tool: z.literal('pipeline/normalization'),
+    result: PipelineNormalizationResultSchema,
+  }),
+])
+
+const PipelineMessageSchema = z.union([
+  StatusMessageSchema,
+  ResultMessageSchema,
+  ToolCallMessageSchema,
+  ToolResultMessageSchema,
+])
+
+export type StatusMessage = z.infer<typeof StatusMessageSchema>
+export type ResultMessage = z.infer<typeof ResultMessageSchema>
+export type ToolCallMessage = z.infer<typeof ToolCallMessageSchema>
+export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>
+export type PipelineMessage = z.infer<typeof PipelineMessageSchema>
 
 async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
   const initResponse = await fetch('http://localhost:8000/query', {
@@ -52,8 +168,9 @@ async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
       const line = event.trim()
       if (line.startsWith('data: ')) {
         try {
-          const parsed = JSON.parse(line.slice(6)) as PipelineMessage
-          yield parsed
+          const raw: unknown = JSON.parse(line.slice(6))
+          const parsed = PipelineMessageSchema.safeParse(raw)
+          if (parsed.success) yield parsed.data
         } catch {
           // ignore malformed events
         }

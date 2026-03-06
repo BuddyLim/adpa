@@ -11,7 +11,7 @@ describe('chatQueryOptions golden path', () => {
   it('streams status then result messages and accumulates them via QueryClient', async () => {
     const messages: PipelineMessage[] = [
       { type: 'status', message: 'Thinking...' },
-      { type: 'result', accepted: true, reason: 'Valid query', refined_query: null },
+      { type: 'result', accepted: true, reason: 'Valid query', refined_query: 'Valid query' },
     ]
 
     const ssePayload = messages

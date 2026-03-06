@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.database import AsyncSessionLocal
-from app.db.models import Conversation, Dataset, Message, PipelineRun, PipelineStep
-from app.schemas.query import CoordinatorDecision
+from app.db.models import Conversation, Dataset, ExtractionResultRecord, Message, NormalizationResultRecord, PipelineRun, PipelineStep
+from app.schemas.query import CoordinatorDecision, ExtractionResult, NormalizationResult
 
 
 class PipelineRepository:
@@ -107,15 +107,51 @@ class PipelineRepository:
             await db.commit()
             logfire.info("assistant message added", conversation_id=conversation_id)
 
+    async def save_extraction_results(self, run_id: str, results: list[ExtractionResult]) -> None:
+        async with self._db_span("db: save extraction results", run_id=run_id, n_results=len(results)) as db:
+            for r in results:
+                db.add(ExtractionResultRecord(
+                    pipeline_run_id=run_id,
+                    source_dataset=r.source_dataset,
+                    summary=r.summary,
+                    rows=r.rows,
+                    join_keys=r.join_keys,
+                    sql_query=r.sql_query,
+                ))
+            await db.commit()
+            logfire.info("extraction results saved", run_id=run_id, n_results=len(results))
+
+    async def save_normalization_result(self, run_id: str, result: NormalizationResult) -> None:
+        async with self._db_span("db: save normalization result", run_id=run_id) as db:
+            db.add(NormalizationResultRecord(
+                pipeline_run_id=run_id,
+                notes=result.notes,
+                unified_rows=result.unified_rows,
+                columns=result.columns,
+            ))
+            await db.commit()
+            logfire.info("normalization result saved", run_id=run_id)
+
     async def list_datasets(self):
         async with self._db_span("db: getting datasets") as db:
             stmt = select(Dataset)
             result = await db.execute(stmt)
             datasets = result.scalars().all()
             return json.dumps([
-                {"title": d.title, "summary": d.summary, "file_path": d.file_path}
+                {"title": d.title, "description": d.summary, "path": d.file_path}
                 for d in datasets
             ])
+
+    async def get_messages(self, conversation_id: str) -> list[dict]:
+        async with self._db_span("db: get messages", conversation_id=conversation_id) as db:
+            result = await db.execute(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.created_at)
+            )
+            messages = result.scalars().all()
+            return [{"role": m.role, "content": m.content} for m in messages]
+
 
 def get_pipeline_repo() -> PipelineRepository:
     return PipelineRepository()

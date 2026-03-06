@@ -234,37 +234,3 @@ a {
   }
 }
 
-/* CopilotKit theme overrides */
-:root {
-  --copilot-kit-primary-color: var(--lagoon-deep);
-  --copilot-kit-secondary-color: var(--lagoon);
-  --copilot-kit-background-color: var(--foam);
-  --copilot-kit-separator-color: var(--line);
-  --copilot-kit-scrollbar-color: var(--line);
-  --copilot-kit-response-button-color: var(--sea-ink-soft);
-  --copilot-kit-response-button-background-color: var(--chip-bg);
-  --copilot-kit-contrast-color: #ffffff;
-}
-
-/* Make the chat panel fill its container */
-.copilotKitChat {
-  height: 100%;
-  border-radius: 0;
-  border: none;
-  background: var(--foam);
-}
-
-.copilotKitMessages {
-  background: var(--foam);
-}
-
-.copilotKitInput {
-  border-top: 1px solid var(--line);
-  background: var(--surface-strong);
-}
-
-.copilotKitHeader {
-  border-bottom: 1px solid var(--line);
-  background: var(--header-bg);
-  backdrop-filter: blur(8px);
-}

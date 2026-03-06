@@ -21,10 +21,20 @@ const PipelineNormalizationArgsSchema = z.object({
   datasets: z.array(z.string()),
 })
 
+const PipelineAnalysisArgsSchema = z.object({
+  unified_rows: z.number(),
+  columns: z.array(z.string()),
+})
+
 export type ListDatasetsArgs = z.infer<typeof ListDatasetsArgsSchema>
 export type DatasetsSelectedArgs = z.infer<typeof DatasetsSelectedArgsSchema>
-export type PipelineExtractionArgs = z.infer<typeof PipelineExtractionArgsSchema>
-export type PipelineNormalizationArgs = z.infer<typeof PipelineNormalizationArgsSchema>
+export type PipelineExtractionArgs = z.infer<
+  typeof PipelineExtractionArgsSchema
+>
+export type PipelineNormalizationArgs = z.infer<
+  typeof PipelineNormalizationArgsSchema
+>
+export type PipelineAnalysisArgs = z.infer<typeof PipelineAnalysisArgsSchema>
 
 // ─── Per-tool result schemas ──────────────────────────────────────────────────
 
@@ -50,10 +60,41 @@ const PipelineNormalizationResultSchema = z.object({
   columns: z.array(z.string()),
 })
 
+export const ChartConfigSchema = z.object({
+  chart_type: z.enum(['bar', 'line', 'area', 'pie']),
+  title: z.string(),
+  description: z.string(),
+  x_key: z.string().nullish(),
+  y_keys: z.array(z.string()).default([]),
+  x_label: z.string().nullish(),
+  y_label: z.string().nullish(),
+  series_labels: z.record(z.string(), z.string()).default({}),
+  name_key: z.string().nullish(),
+  value_key: z.string().nullish(),
+  data: z.array(z.record(z.string(), z.unknown())),
+  color: z.string().nullish(),
+})
+
+const PipelineAnalysisResultSchema = z.object({
+  summary: z.string(),
+  key_findings: z.array(z.string()),
+  chart_configs: z.array(ChartConfigSchema),
+})
+
 export type ListDatasetsResult = z.infer<typeof ListDatasetsResultSchema>
-export type DatasetsSelectedResult = z.infer<typeof DatasetsSelectedResultSchema>
-export type PipelineExtractionResult = z.infer<typeof PipelineExtractionResultSchema>
-export type PipelineNormalizationResult = z.infer<typeof PipelineNormalizationResultSchema>
+export type DatasetsSelectedResult = z.infer<
+  typeof DatasetsSelectedResultSchema
+>
+export type PipelineExtractionResult = z.infer<
+  typeof PipelineExtractionResultSchema
+>
+export type PipelineNormalizationResult = z.infer<
+  typeof PipelineNormalizationResultSchema
+>
+export type ChartConfig = z.infer<typeof ChartConfigSchema>
+export type PipelineAnalysisResult = z.infer<
+  typeof PipelineAnalysisResultSchema
+>
 
 // ─── Discriminated message schemas ────────────────────────────────────────────
 
@@ -90,6 +131,11 @@ const ToolCallMessageSchema = z.discriminatedUnion('tool', [
     tool: z.literal('pipeline/normalization'),
     args: PipelineNormalizationArgsSchema,
   }),
+  z.object({
+    type: z.literal('tool_call'),
+    tool: z.literal('pipeline/analysis'),
+    args: PipelineAnalysisArgsSchema,
+  }),
 ])
 
 const ToolResultMessageSchema = z.discriminatedUnion('tool', [
@@ -113,19 +159,31 @@ const ToolResultMessageSchema = z.discriminatedUnion('tool', [
     tool: z.literal('pipeline/normalization'),
     result: PipelineNormalizationResultSchema,
   }),
+  z.object({
+    type: z.literal('tool_result'),
+    tool: z.literal('pipeline/analysis'),
+    result: PipelineAnalysisResultSchema,
+  }),
 ])
+
+const AnalysisTextMessageSchema = z.object({
+  type: z.literal('analysis_text'),
+  chunk: z.string(),
+})
 
 const PipelineMessageSchema = z.union([
   StatusMessageSchema,
   ResultMessageSchema,
   ToolCallMessageSchema,
   ToolResultMessageSchema,
+  AnalysisTextMessageSchema,
 ])
 
 export type StatusMessage = z.infer<typeof StatusMessageSchema>
 export type ResultMessage = z.infer<typeof ResultMessageSchema>
 export type ToolCallMessage = z.infer<typeof ToolCallMessageSchema>
 export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>
+export type AnalysisTextMessage = z.infer<typeof AnalysisTextMessageSchema>
 export type PipelineMessage = z.infer<typeof PipelineMessageSchema>
 
 async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
@@ -170,6 +228,7 @@ async function* chatAnswer(question: string): AsyncGenerator<PipelineMessage> {
         try {
           const raw: unknown = JSON.parse(line.slice(6))
           const parsed = PipelineMessageSchema.safeParse(raw)
+          console.log(parsed)
           if (parsed.success) yield parsed.data
         } catch {
           // ignore malformed events

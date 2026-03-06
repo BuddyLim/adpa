@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.database import AsyncSessionLocal
-from app.db.models import Conversation, Dataset, ExtractionResultRecord, Message, NormalizationResultRecord, PipelineRun, PipelineStep
-from app.schemas.query import CoordinatorDecision, ExtractionResult, NormalizationResult
+from app.db.models import AnalysisResultRecord, Conversation, Dataset, ExtractionResultRecord, Message, NormalizationResultRecord, PipelineRun, PipelineStep
+from app.schemas.query import AnalysisResult, CoordinatorDecision, ExtractionResult, NormalizationResult
 
 
 class PipelineRepository:
@@ -131,6 +131,17 @@ class PipelineRepository:
             ))
             await db.commit()
             logfire.info("normalization result saved", run_id=run_id)
+
+    async def save_analysis_result(self, run_id: str, result: AnalysisResult) -> None:
+        async with self._db_span("db: save analysis result", run_id=run_id) as db:
+            db.add(AnalysisResultRecord(
+                pipeline_run_id=run_id,
+                summary=result.summary,
+                key_findings=result.key_findings,
+                chart_configs=[c.model_dump() for c in result.chart_configs],
+            ))
+            await db.commit()
+            logfire.info("analysis result saved", run_id=run_id)
 
     async def list_datasets(self):
         async with self._db_span("db: getting datasets") as db:

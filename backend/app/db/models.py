@@ -106,6 +106,9 @@ class PipelineRun(Base):
     normalization_result: Mapped["NormalizationResultRecord | None"] = relationship(
         back_populates="pipeline_run", uselist=False
     )
+    analysis_result: Mapped["AnalysisResultRecord | None"] = relationship(
+        back_populates="pipeline_run", uselist=False
+    )
 
 
 class PipelineStep(Base):
@@ -181,3 +184,18 @@ class NormalizationResultRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="normalization_result")
+
+
+class AnalysisResultRecord(Base):
+    __tablename__ = "analysis_results"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    pipeline_run_id: Mapped[str] = mapped_column(
+        String, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    key_findings: Mapped[list] = mapped_column(JSON, nullable=False)
+    chart_configs: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="analysis_result")

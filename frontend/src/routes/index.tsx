@@ -622,6 +622,21 @@ function PipelineSteps({
   const [expanded, setExpanded] = useState(false)
   if (steps.length === 0 && invocations.length === 0) return null
 
+  const pendingInvocation = invocations.find((inv) => inv.pending)
+  const lastCompletedInvocation = [...invocations]
+    .reverse()
+    .find((inv) => !inv.pending)
+
+  let headerText = steps.at(-1)?.message ?? 'Working…'
+
+  if (!isFetching) {
+    headerText = lastCompletedInvocation?.tool
+      ? (TOOL_LABELS[lastCompletedInvocation.tool]?.done ?? 'Done')
+      : 'Done'
+  } else if (pendingInvocation) {
+    headerText = TOOL_LABELS[pendingInvocation.tool]?.pending ?? headerText
+  }
+
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden text-sm bg-[var(--surface-strong)] shadow-sm">
       <button
@@ -629,9 +644,7 @@ function PipelineSteps({
         onClick={() => setExpanded(!expanded)}
       >
         {isFetching ? <Spinner /> : <CheckIcon />}
-        <span className="flex-1 text-xs font-medium">
-          {isFetching ? (steps.at(-1)?.message ?? 'Working…') : 'Done'}
-        </span>
+        <span className="flex-1 text-xs font-medium">{headerText}</span>
         <svg
           className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
           viewBox="0 0 12 12"
@@ -643,7 +656,7 @@ function PipelineSteps({
         </svg>
       </button>
       {expanded && (
-        <div className="px-3 pb-6 pt-1 space-y-2 border-t border-[var(--line)]">
+        <div className="px-3 pb-4 pt-1 space-y-2 border-t border-[var(--line)]">
           {steps.map((step, i) => (
             <div
               key={i}
@@ -704,6 +717,29 @@ function ResultBubble({ result }: { result: ResultMessage }) {
       )}
     </div>
   )
+}
+
+// ─── Tool Labels ──────────────────────────────────────────────────────────────
+
+const TOOL_LABELS: Partial<
+  Record<ToolCallMessage['tool'], { pending: string; done: string }>
+> = {
+  'coordinator/list_datasets': {
+    pending: 'Loading datasets…',
+    done: 'Datasets available',
+  },
+  'coordinator/datasets_selected': {
+    pending: 'Selecting datasets…',
+    done: 'Datasets selected',
+  },
+  'pipeline/extraction': {
+    pending: 'Extracting data…',
+    done: 'Data extracted',
+  },
+  'pipeline/normalization': {
+    pending: 'Normalizing data…',
+    done: 'Data normalized',
+  },
 }
 
 // ─── Tool Invocations ─────────────────────────────────────────────────────────
@@ -855,11 +891,11 @@ function App() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[var(--sand)]">
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[var(--header-bg)]">
           {questions.length === 0 && (
-            <p className="text-sm text-[var(--sea-ink-soft)] text-center mt-8">
-              Hi! Ask me anything about Singapore policy data — I can help you
-              find relevant datasets and prepare visualisations.
+            <p className="text-sm text-[var(--sea-ink-soft)] text-center mt-8 text-gray-500">
+              Hi! Ask me anything about Singaporean data related matters, I can
+              help you find relevant datasets and prepare visualisations.
             </p>
           )}
           {questions.map((q) => (

@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -50,6 +51,9 @@ class Conversation(Base):
     messages: Mapped[list["Message"]] = relationship(
         back_populates="conversation", order_by="Message.created_at"
     )
+    pipeline_runs: Mapped[list["PipelineRun"]] = relationship(
+        back_populates="conversation", order_by="PipelineRun.created_at"
+    )
 
 
 class Message(Base):
@@ -75,6 +79,9 @@ class Message(Base):
 
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        Index("ix_pipeline_runs_conversation_id", "conversation_id"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     # The user message that triggered this run
@@ -84,15 +91,25 @@ class PipelineRun(Base):
         nullable=False,
         unique=True,
     )
+    # Denormalized FK for direct conversation → pipeline_run queries
+    conversation_id: Mapped[str] = mapped_column(
+        String,
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # status: 'pending' | 'running' | 'completed' | 'rejected' | 'failed'
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     accepted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     enhanced_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_stage: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    conversation: Mapped["Conversation"] = relationship(back_populates="pipeline_runs")
     message: Mapped["Message"] = relationship(back_populates="pipeline_run")
     steps: Mapped[list["PipelineStep"]] = relationship(
         back_populates="pipeline_run", order_by="PipelineStep.step_order"
@@ -120,6 +137,9 @@ class PipelineStep(Base):
     )
     step_order: Mapped[int] = mapped_column(Integer, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    # Machine-readable step type for programmatic stage detection
+    # Values: 'query_analysis' | 'dataset_found' | 'extraction' | 'normalization' | 'analysis' | 'complete' | 'rejected' | 'failed'
+    step_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow
     )
@@ -141,6 +161,9 @@ class Dataset(Base):
     pipeline_runs: Mapped[list["PipelineRun"]] = relationship(
         secondary="pipeline_run_datasets", back_populates="datasets"
     )
+    extraction_results: Mapped[list["ExtractionResultRecord"]] = relationship(
+        back_populates="dataset"
+    )
 
 
 class PipelineRunDataset(Base):
@@ -161,7 +184,12 @@ class ExtractionResultRecord(Base):
     pipeline_run_id: Mapped[str] = mapped_column(
         String, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
     )
-    source_dataset: Mapped[str] = mapped_column(Text, nullable=False)
+    # FK to the Dataset record (SET NULL if dataset is deleted so history is preserved)
+    dataset_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True,
+        index=True,
+    )
+    source_dataset: Mapped[str] = mapped_column(Text, nullable=False)  # denormalized title for display
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     rows: Mapped[list] = mapped_column(JSON, nullable=False)
     join_keys: Mapped[list] = mapped_column(JSON, nullable=False)
@@ -169,6 +197,7 @@ class ExtractionResultRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
     pipeline_run: Mapped["PipelineRun"] = relationship(back_populates="extraction_results")
+    dataset: Mapped["Dataset | None"] = relationship(back_populates="extraction_results")
 
 
 class NormalizationResultRecord(Base):

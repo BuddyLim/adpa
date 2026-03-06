@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { chatQueryOptions } from '#/queries/chat.queries'
 import type {
   AnalysisTextMessage,
+  ConversationStartedMessage,
+  ErrorMessage,
   PipelineAnalysisResult,
   ResultMessage,
   StatusMessage,
@@ -29,20 +31,40 @@ function AnalysisBubble({
   )
 }
 
+function RejectedBadge({ reason }: { reason: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-amber-50 border border-amber-200 text-xs text-amber-800">
+      <span className="shrink-0 mt-0.5">⚠</span>
+      <span>{reason}</span>
+    </div>
+  )
+}
+
 export function ChatMessage({
   question,
+  conversationId,
   onAccepted,
+  onConversationStarted,
 }: {
   question: string
+  conversationId?: string | null
   onAccepted: (
     result: ResultMessage,
     analysisResult?: PipelineAnalysisResult,
   ) => void
+  onConversationStarted?: (id: string, title: string | null) => void
 }) {
-  const options = useMemo(() => chatQueryOptions(question), [question])
+  const options = useMemo(
+    () => chatQueryOptions(question, conversationId),
+    [question, conversationId],
+  )
   const { error, data = [], isFetching } = useQuery(options)
-  const calledRef = useRef(false)
+  const acceptedRef = useRef(false)
+  const convStartedRef = useRef(false)
 
+  const convStarted = data.find(
+    (m): m is ConversationStartedMessage => m.type === 'conversation_started',
+  )
   const statusMessages = data.filter(
     (m): m is StatusMessage => m.type === 'status',
   )
@@ -59,6 +81,8 @@ export function ChatMessage({
       r.tool === 'pipeline/analysis',
   )
 
+  const pipelineError = data.find((m): m is ErrorMessage => m.type === 'error')
+
   const analysisTextChunks = data.filter(
     (m): m is AnalysisTextMessage => m.type === 'analysis_text',
   )
@@ -69,8 +93,15 @@ export function ChatMessage({
   const toolInvocations = buildToolInvocations(toolCalls, toolResults)
 
   useEffect(() => {
-    if (result?.accepted && !calledRef.current) {
-      calledRef.current = true
+    if (convStarted && !convStartedRef.current) {
+      convStartedRef.current = true
+      onConversationStarted?.(convStarted.conversation_id, convStarted.title)
+    }
+  }, [convStarted, onConversationStarted])
+
+  useEffect(() => {
+    if (result?.accepted && !acceptedRef.current) {
+      acceptedRef.current = true
       onAccepted(result, analysisToolResult?.result)
     }
   }, [result, analysisToolResult, onAccepted])
@@ -85,15 +116,20 @@ export function ChatMessage({
       </div>
 
       {/* Pipeline status + tool cards + result */}
-      {(statusMessages.length > 0 || toolInvocations.length > 0 || error) && (
+      {(statusMessages.length > 0 || toolInvocations.length > 0 || error || pipelineError || result) && (
         <div className="space-y-2">
           <PipelineSteps
             steps={statusMessages}
             invocations={toolInvocations}
             isFetching={isFetching}
           />
-          {error && (
-            <p className="text-xs text-red-500 px-1">Error: {error.message}</p>
+          {(error ?? pipelineError) && (
+            <p className="text-xs text-red-500 px-1">
+              Error: {error?.message ?? pipelineError?.message}
+            </p>
+          )}
+          {result && !result.accepted && result.reason && (
+            <RejectedBadge reason={result.reason} />
           )}
           {analysisText && (
             <AnalysisBubble

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import {
   BarChart as ReBarChart,
   Bar,
@@ -25,9 +26,24 @@ const CHART_STYLE = {
     fontSize: 12,
   },
   labelStyle: { color: 'var(--sea-ink)', fontWeight: 600 },
+  formatter: (
+    value: number | string | undefined,
+    name: string | number | undefined,
+  ) => {
+    const val =
+      typeof value === 'number'
+        ? [value.toLocaleString(), '']
+        : [value ?? '', '']
+
+    return [val, name]
+  },
 }
 
-export function DynamicChart({ config }: { config: ChartConfig }) {
+export const DynamicChart = memo(function DynamicChart({
+  config,
+}: {
+  config: ChartConfig
+}) {
   return (
     <div className="space-y-1">
       <p className="island-kicker">{config.title}</p>
@@ -229,4 +245,4 @@ export function DynamicChart({ config }: { config: ChartConfig }) {
       </div>
     </div>
   )
-}
+})

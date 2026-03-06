@@ -10,11 +10,13 @@ describe('chatQueryOptions golden path', () => {
 
   it('streams status then result messages and accumulates them via QueryClient', async () => {
     const messages: PipelineMessage[] = [
+      { type: 'conversation_started', conversation_id: 'conv-456', title: 'What is GovTech?' },
       { type: 'status', message: 'Thinking...' },
       { type: 'result', accepted: true, reason: 'Valid query', refined_query: 'Valid query' },
     ]
 
-    const ssePayload = messages
+    const sseMessages = messages.filter((m) => m.type !== 'conversation_started')
+    const ssePayload = sseMessages
       .map((m) => `data: ${JSON.stringify(m)}`)
       .join('\n\n') + '\n\n'
 
@@ -30,7 +32,10 @@ describe('chatQueryOptions golden path', () => {
       vi
         .fn()
         .mockResolvedValueOnce(
-          new Response(JSON.stringify({ task_id: 'test-123' }), { status: 200 }),
+          new Response(
+            JSON.stringify({ task_id: 'test-123', conversation_id: 'conv-456', title: 'What is GovTech?' }),
+            { status: 200 },
+          ),
         )
         .mockResolvedValueOnce(new Response(stream, { status: 200 })),
     )
@@ -38,7 +43,7 @@ describe('chatQueryOptions golden path', () => {
     const client = new QueryClient()
     const options = chatQueryOptions('What is GovTech?')
 
-    expect(options.queryKey).toEqual(['chat', 'What is GovTech?'])
+    expect(options.queryKey).toEqual(['chat', 'What is GovTech?', 'new'])
 
     const context = {
       client,

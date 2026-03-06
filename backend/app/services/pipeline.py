@@ -70,7 +70,7 @@ async def run_pipeline(
 
     with logfire.span("pipeline step", step_order=step_order, message=step_msg):
         try:
-            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg, step_type="query_analysis")
         except Exception as err:
             logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
             raise
@@ -81,19 +81,14 @@ async def run_pipeline(
             plan = await coordinator_agent.run(query, deps=CoordinatorDeps(pipeline_repo))
         except Exception as err:
             logfire.error("coordinator agent failed", task_id=task_id, error=str(err), exc_info=True)
+            try:
+                await pipeline_repo.fail_run(pipeline_run_id, "coordinator", str(err))
+            except Exception:
+                pass
             raise
 
-    # Emit coordinator tool events
-    for event in _build_tool_events(plan.all_messages(), "coordinator"):
-        yield f"data: {event.model_dump_json()}\n\n"
 
     decision = plan.output
-
-    # Emit dataset selection event
-    if decision.dataset_selected:
-        selected_titles = [ds.title for ds in decision.dataset_selected]
-        yield f"data: {ToolCallEvent(tool='coordinator/datasets_selected', args={}).model_dump_json()}\n\n"
-        yield f"data: {ToolResultEvent(tool='coordinator/datasets_selected', result={'datasets': selected_titles}).model_dump_json()}\n\n"
 
     logfire.info(
         "coordinator decision",
@@ -114,6 +109,16 @@ async def run_pipeline(
                 logfire.error("failed to persist rejection", task_id=task_id, error=str(err), exc_info=True)
                 raise
         return
+
+    # Emit coordinator tool events (datasets available, etc.) first
+    for event in _build_tool_events(plan.all_messages(), "coordinator"):
+        yield f"data: {event.model_dump_json()}\n\n"
+
+    # Then emit dataset selection event
+    if decision.dataset_selected:
+        selected_titles = [ds.title for ds in decision.dataset_selected]
+        yield f"data: {ToolCallEvent(tool='coordinator/datasets_selected', args={}).model_dump_json()}\n\n"
+        yield f"data: {ToolResultEvent(tool='coordinator/datasets_selected', result={'datasets': selected_titles}).model_dump_json()}\n\n"
 
 
     if not decision.dataset_selected:
@@ -136,9 +141,21 @@ async def run_pipeline(
 
     with logfire.span("pipeline step", step_order=step_order, message=step_msg):
         try:
-            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg, step_type="dataset_found")
         except Exception as err:
             logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
+            raise
+
+    # Ensure Dataset rows exist before extraction so extraction_results.dataset_id can be populated
+    with logfire.span("ensure datasets", task_id=task_id):
+        try:
+            dataset_ids = await pipeline_repo.ensure_datasets(decision.dataset_selected)
+        except Exception as err:
+            logfire.error("failed to ensure datasets", task_id=task_id, error=str(err), exc_info=True)
+            try:
+                await pipeline_repo.fail_run(pipeline_run_id, "ensure_datasets", str(err))
+            except Exception:
+                pass
             raise
 
     # Fetch prior conversation turns (exclude the current user message — last item)
@@ -196,6 +213,10 @@ async def run_pipeline(
                 return result
             except Exception as err:
                 logfire.error("extraction agent failed", task_id=task_id, title=title, error=str(err), exc_info=True)
+                try:
+                    await pipeline_repo.fail_run(pipeline_run_id, "extraction", str(err))
+                except Exception:
+                    pass
                 raise
 
     # Emit a single extraction start event
@@ -215,7 +236,7 @@ async def run_pipeline(
 
     with logfire.span("persist extraction results", task_id=task_id):
         try:
-            await pipeline_repo.save_extraction_results(pipeline_run_id, extraction_results)
+            await pipeline_repo.save_extraction_results(pipeline_run_id, extraction_results, dataset_ids)
         except Exception as err:
             logfire.error("failed to persist extraction results", task_id=task_id, error=str(err), exc_info=True)
             raise
@@ -227,7 +248,7 @@ async def run_pipeline(
 
         with logfire.span("pipeline step", step_order=step_order, message=step_msg):
             try:
-                await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+                await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg, step_type="normalization")
             except Exception as err:
                 logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
                 raise
@@ -240,6 +261,10 @@ async def run_pipeline(
                 normalization_result, _ = await run_normalization(extraction_results, decision.enhanced_query)
             except Exception as err:
                 logfire.error("normalization agent failed", task_id=task_id, error=str(err), exc_info=True)
+                try:
+                    await pipeline_repo.fail_run(pipeline_run_id, "normalization", str(err))
+                except Exception:
+                    pass
                 raise
 
         # Emit a single normalization result event
@@ -268,7 +293,7 @@ async def run_pipeline(
 
     with logfire.span("pipeline step", step_order=step_order, message=step_msg):
         try:
-            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg, step_type="analysis")
         except Exception as err:
             logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
             raise
@@ -282,12 +307,20 @@ async def run_pipeline(
             )
         except Exception as err:
             logfire.error("analysis agent failed", task_id=task_id, error=str(err), exc_info=True)
+            try:
+                await pipeline_repo.fail_run(pipeline_run_id, "analysis", str(err))
+            except Exception:
+                pass
             raise
 
     yield f"data: {ToolResultEvent(tool='pipeline/analysis', result=analysis_result.model_dump()).model_dump_json()}\n\n"
 
+    # Accumulate narrative so it can be persisted as the assistant message
+    narrative_chunks: list[str] = []
     async for chunk in stream_narrative(analysis_result, decision.enhanced_query):
+        narrative_chunks.append(chunk)
         yield f"data: {AnalysisTextEvent(chunk=chunk).model_dump_json()}\n\n"
+    narrative_text = "".join(narrative_chunks)
 
     with logfire.span("persist analysis result", task_id=task_id):
         try:
@@ -299,7 +332,7 @@ async def run_pipeline(
     with logfire.span("persist result", task_id=task_id, datasets=dataset_titles):
         try:
             await pipeline_repo.complete_run(pipeline_run_id, decision)
-            await pipeline_repo.add_assistant_message(conversation_id, decision.reason)
+            await pipeline_repo.add_assistant_message(conversation_id, narrative_text)
         except Exception as err:
             logfire.error("failed to persist result", task_id=task_id, error=str(err), exc_info=True)
             raise

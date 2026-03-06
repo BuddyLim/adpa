@@ -38,6 +38,13 @@ class PipelineRepository:
             logfire.info("conversation created", conversation_id=conversation.id)
             return conversation.id
 
+    async def update_conversation_title(self, conversation_id: str, title: str) -> None:
+        async with self._db_span("db: update conversation title", conversation_id=conversation_id) as db:
+            conversation = await db.get(Conversation, conversation_id)
+            if conversation:
+                conversation.title = title
+                await db.commit()
+
     async def get_conversation(self, conversation_id: str) -> Conversation | None:
         async with self._db_span("db: get conversation", conversation_id=conversation_id) as db:
             conversation = await db.get(Conversation, conversation_id)
@@ -54,9 +61,9 @@ class PipelineRepository:
             logfire.info("user message created", message_id=message.id)
             return message.id
 
-    async def create_pipeline_run(self, run_id: str, message_id: str) -> None:
+    async def create_pipeline_run(self, run_id: str, message_id: str, conversation_id: str) -> None:
         async with self._db_span("db: create pipeline run", run_id=run_id, message_id=message_id) as db:
-            db.add(PipelineRun(id=run_id, message_id=message_id))
+            db.add(PipelineRun(id=run_id, message_id=message_id, conversation_id=conversation_id))
             await db.commit()
             logfire.info("pipeline run created", run_id=run_id)
 
@@ -68,10 +75,31 @@ class PipelineRepository:
             run.status = "running"
             await db.commit()
 
-    async def add_step(self, run_id: str, order: int, message: str) -> None:
+    async def add_step(self, run_id: str, order: int, message: str, step_type: str | None = None) -> None:
         async with self._db_span("db: add pipeline step", run_id=run_id, step_order=order) as db:
-            db.add(PipelineStep(pipeline_run_id=run_id, step_order=order, message=message))
+            db.add(PipelineStep(pipeline_run_id=run_id, step_order=order, message=message, step_type=step_type))
             await db.commit()
+
+    async def ensure_datasets(self, datasets: list) -> dict[str, str]:
+        """Upsert Dataset rows and return {title: dataset_id} mapping.
+
+        Called before extraction so that dataset IDs are available when
+        saving extraction results, establishing proper FK linkage early.
+        """
+        title_to_id: dict[str, str] = {}
+        async with self._db_span("db: ensure datasets") as db:
+            for ds in datasets:
+                result = await db.execute(select(Dataset).where(Dataset.file_path == ds.path))
+                dataset = result.scalar_one_or_none()
+                if not dataset:
+                    dataset = Dataset(title=ds.title, file_path=ds.path)
+                    db.add(dataset)
+                    await db.flush()
+                    logfire.info("dataset created", title=ds.title, file_path=ds.path)
+                title_to_id[ds.title] = dataset.id
+            await db.commit()
+        logfire.info("datasets ensured", titles=list(title_to_id.keys()))
+        return title_to_id
 
     async def complete_run(self, run_id: str, decision: CoordinatorDecision) -> None:
         async with self._db_span("db: complete pipeline run", run_id=run_id, accepted=decision.accepted) as db:
@@ -84,7 +112,8 @@ class PipelineRepository:
             run.accepted = decision.accepted
             run.reason = decision.reason
             run.enhanced_query = decision.enhanced_query
-            run.status = "completed"
+            # Distinguish successful completion from coordinator rejection
+            run.status = "completed" if decision.accepted else "rejected"
             run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
             if decision.dataset_selected:
@@ -101,17 +130,37 @@ class PipelineRepository:
             await db.commit()
             logfire.info("pipeline run completed", run_id=run_id, accepted=decision.accepted)
 
+    async def fail_run(self, run_id: str, stage: str, error: str) -> None:
+        """Record a pipeline failure with the stage and error message."""
+        async with self._db_span("db: fail pipeline run", run_id=run_id, stage=stage) as db:
+            run = await db.get(PipelineRun, run_id)
+            if run is None:
+                logfire.warn("fail_run: pipeline run not found", run_id=run_id)
+                return
+            run.status = "failed"
+            run.error_stage = stage
+            run.error_message = error
+            run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            await db.commit()
+            logfire.info("pipeline run failed", run_id=run_id, stage=stage)
+
     async def add_assistant_message(self, conversation_id: str, content: str) -> None:
         async with self._db_span("db: add assistant message", conversation_id=conversation_id) as db:
             db.add(Message(conversation_id=conversation_id, role="assistant", content=content))
             await db.commit()
             logfire.info("assistant message added", conversation_id=conversation_id)
 
-    async def save_extraction_results(self, run_id: str, results: list[ExtractionResult]) -> None:
+    async def save_extraction_results(
+        self,
+        run_id: str,
+        results: list[ExtractionResult],
+        dataset_ids: dict[str, str] | None = None,
+    ) -> None:
         async with self._db_span("db: save extraction results", run_id=run_id, n_results=len(results)) as db:
             for r in results:
                 db.add(ExtractionResultRecord(
                     pipeline_run_id=run_id,
+                    dataset_id=(dataset_ids or {}).get(r.source_dataset),
                     source_dataset=r.source_dataset,
                     summary=r.summary,
                     rows=r.rows,
@@ -142,6 +191,21 @@ class PipelineRepository:
             ))
             await db.commit()
             logfire.info("analysis result saved", run_id=run_id)
+
+    async def get_conversation_results(self, conversation_id: str) -> list[PipelineRun]:
+        """Load all pipeline runs for a conversation with their full artifact chain."""
+        async with self._db_span("db: get conversation results", conversation_id=conversation_id) as db:
+            result = await db.execute(
+                select(PipelineRun)
+                .options(
+                    selectinload(PipelineRun.datasets),
+                    selectinload(PipelineRun.steps),
+                    selectinload(PipelineRun.analysis_result),
+                )
+                .where(PipelineRun.conversation_id == conversation_id)
+                .order_by(PipelineRun.created_at)
+            )
+            return list(result.scalars().all())
 
     async def list_datasets(self):
         async with self._db_span("db: getting datasets") as db:

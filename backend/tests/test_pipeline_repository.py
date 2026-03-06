@@ -41,7 +41,7 @@ async def test_full_pipeline_lifecycle_accepted(db_setup):
     msg_id = await repo.create_user_message(conv_id, "How do people commute?")
     assert msg_id
 
-    await repo.create_pipeline_run(run_id, msg_id)
+    await repo.create_pipeline_run(run_id, msg_id, conv_id)
     await repo.mark_running(run_id)
     await repo.add_step(run_id, 1, "Searching datasets...")
 
@@ -79,7 +79,7 @@ async def test_pipeline_run_rejection(db_setup):
 
     conv_id = await repo.create_conversation()
     msg_id = await repo.create_user_message(conv_id, "What is the weather today?")
-    await repo.create_pipeline_run(run_id, msg_id)
+    await repo.create_pipeline_run(run_id, msg_id, conv_id)
 
     decision = CoordinatorDecision(
         accepted=False,
@@ -98,7 +98,7 @@ async def test_pipeline_run_rejection(db_setup):
         run = result.scalar_one()
         all_datasets = (await db.execute(select(Dataset))).scalars().all()
 
-    assert run.status == "completed"
+    assert run.status == "rejected"
     assert run.accepted is False
     assert run.reason == "No relevant dataset found"
     assert run.datasets == []

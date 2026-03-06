@@ -89,11 +89,6 @@ async def run_pipeline(
 
 
     decision = plan.output
-    # Emit dataset selection event
-    if decision.dataset_selected:
-        selected_titles = [ds.title for ds in decision.dataset_selected]
-        yield f"data: {ToolCallEvent(tool='coordinator/datasets_selected', args={}).model_dump_json()}\n\n"
-        yield f"data: {ToolResultEvent(tool='coordinator/datasets_selected', result={'datasets': selected_titles}).model_dump_json()}\n\n"
 
     logfire.info(
         "coordinator decision",
@@ -115,9 +110,15 @@ async def run_pipeline(
                 raise
         return
 
-    # Emit coordinator tool events
+    # Emit coordinator tool events (datasets available, etc.) first
     for event in _build_tool_events(plan.all_messages(), "coordinator"):
         yield f"data: {event.model_dump_json()}\n\n"
+
+    # Then emit dataset selection event
+    if decision.dataset_selected:
+        selected_titles = [ds.title for ds in decision.dataset_selected]
+        yield f"data: {ToolCallEvent(tool='coordinator/datasets_selected', args={}).model_dump_json()}\n\n"
+        yield f"data: {ToolResultEvent(tool='coordinator/datasets_selected', result={'datasets': selected_titles}).model_dump_json()}\n\n"
 
 
     if not decision.dataset_selected:

@@ -9,6 +9,8 @@
 import type {
   DatasetsSelectedResult,
   ListDatasetsResult,
+  PipelineAnalysisArgs,
+  PipelineAnalysisResult,
   PipelineExtractionArgs,
   PipelineExtractionResult,
   PipelineNormalizationArgs,
@@ -177,6 +179,39 @@ export function NormalizationCard({
   )
 }
 
+// ─── AnalysisCard (pipeline/analysis) ────────────────────────────────────────
+
+export function AnalysisCard({
+  args,
+  result,
+  pending,
+}: {
+  args: PipelineAnalysisArgs
+  result?: PipelineAnalysisResult
+  pending: boolean
+}) {
+  return (
+    <ToolCard>
+      <ToolBadge
+        label={pending ? 'Analysing data…' : 'Analysis complete'}
+        pending={pending}
+      />
+      {result ? (
+        <div>
+          <p className="text-(--sea-ink-soft) opacity-60">
+            {result.chart_configs.length} chart
+            {result.chart_configs.length !== 1 ? 's' : ''} ready
+          </p>
+        </div>
+      ) : (
+        <p className="text-(--sea-ink-soft)">
+          Processing {args.unified_rows.toLocaleString()} rows…
+        </p>
+      )}
+    </ToolCard>
+  )
+}
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 // The registry uses a broad dispatch type; each card is typed via its props above.
 // The cast below is intentional — the dispatcher in index.tsx passes unknown args/result
@@ -193,4 +228,5 @@ export const TOOL_COMPONENTS: Record<string, ToolCardComponent> = {
   'coordinator/datasets_selected': DatasetsSelectedCard,
   'pipeline/extraction': ExtractionCard,
   'pipeline/normalization': NormalizationCard,
+  'pipeline/analysis': AnalysisCard,
 }

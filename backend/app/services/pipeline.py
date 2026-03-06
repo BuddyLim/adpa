@@ -4,11 +4,12 @@ import json
 import logfire
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
 
+from app.agents.analysis import run_analysis, stream_narrative
 from app.agents.coordinator import CoordinatorDeps, coordinator_agent
 from app.agents.extraction import ExtractionDeps, PeerSchema, extraction_agent, load_schema
 from app.agents.normalization import run_normalization
 from app.repositories.pipeline import PipelineRepository
-from app.schemas.query import MessageType, NormalizationResult, ResultEvent, ToolCallEvent, ToolResultEvent
+from app.schemas.query import AnalysisTextEvent, MessageType, NormalizationResult, ResultEvent, ToolCallEvent, ToolResultEvent
 
 
 def _build_tool_events(messages: list, agent_name: str) -> list[ToolCallEvent | ToolResultEvent]:
@@ -258,6 +259,41 @@ async def run_pipeline(
             await pipeline_repo.save_normalization_result(pipeline_run_id, normalization_result)
         except Exception as err:
             logfire.error("failed to persist normalization result", task_id=task_id, error=str(err), exc_info=True)
+            raise
+
+    # Step: analysis
+    step_order += 1
+    step_msg = "Analysing data and generating insights..."
+    yield f"data: {json.dumps({'type': MessageType.STATUS, 'message': step_msg})}\n\n"
+
+    with logfire.span("pipeline step", step_order=step_order, message=step_msg):
+        try:
+            await pipeline_repo.add_step(pipeline_run_id, order=step_order, message=step_msg)
+        except Exception as err:
+            logfire.error("failed to persist pipeline step", task_id=task_id, step_order=step_order, error=str(err), exc_info=True)
+            raise
+
+    yield f"data: {ToolCallEvent(tool='pipeline/analysis', args={'unified_rows': len(normalization_result.unified_rows), 'columns': normalization_result.columns}).model_dump_json()}\n\n"
+
+    with logfire.span("analysis", task_id=task_id):
+        try:
+            analysis_result, analysis_messages = await run_analysis(
+                normalization_result, decision.enhanced_query
+            )
+        except Exception as err:
+            logfire.error("analysis agent failed", task_id=task_id, error=str(err), exc_info=True)
+            raise
+
+    yield f"data: {ToolResultEvent(tool='pipeline/analysis', result=analysis_result.model_dump()).model_dump_json()}\n\n"
+
+    async for chunk in stream_narrative(analysis_result, decision.enhanced_query):
+        yield f"data: {AnalysisTextEvent(chunk=chunk).model_dump_json()}\n\n"
+
+    with logfire.span("persist analysis result", task_id=task_id):
+        try:
+            await pipeline_repo.save_analysis_result(pipeline_run_id, analysis_result)
+        except Exception as err:
+            logfire.error("failed to persist analysis result", task_id=task_id, error=str(err), exc_info=True)
             raise
 
     with logfire.span("persist result", task_id=task_id, datasets=dataset_titles):

@@ -13,3 +13,4 @@ __unconfig*
 __pycache__
 .python-version
 backend/data/*.db
+*/coverage/

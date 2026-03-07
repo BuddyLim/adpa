@@ -8,7 +8,7 @@ from typing import Literal
 import logfire
 from pydantic_ai import Agent, ModelRetry, RunContext
 
-from app.schemas.query import AnalysisResult, NormalizationResult
+from app.schemas.query import AnalysisResult, AnalysisValidationOutput, NormalizationResult, ResearchPlan
 from app.services.llm import get_llm_model_with_fallback
 
 
@@ -296,10 +296,48 @@ async def stream_narrative(
 async def run_analysis(
     normalization_result: NormalizationResult,
     enhanced_query: str,
+    feedback: str | None = None,
+    prior_analyses: list[dict] | None = None,
+    research_plan: ResearchPlan | None = None,
 ) -> tuple[AnalysisResult, list]:
     payload = json.dumps(normalization_result.model_dump(), indent=2)
+
+    prior_block = ""
+    if prior_analyses:
+        lines = ["=== Prior Analyses in This Conversation ==="]
+        for i, pa in enumerate(prior_analyses, 1):
+            lines.append(f"Query {i}: \"{pa.get('enhanced_query', '')}\"")
+            if pa.get("summary"):
+                lines.append(f"Summary: {pa['summary']}")
+            if pa.get("key_findings"):
+                for kf in pa["key_findings"]:
+                    lines.append(f"  - {kf}")
+        lines.append("\nBuild on these findings where relevant. Do not repeat what was already established.")
+        lines.append("=== End Prior Analyses ===\n")
+        prior_block = "\n".join(lines) + "\n"
+
+    feedback_block = ""
+    if feedback:
+        feedback_block = (
+            f"\nPREVIOUS ANALYSIS FEEDBACK (address these issues in this run):\n{feedback}\n"
+        )
+
+    plan_block = ""
+    if research_plan:
+        plan_block = (
+            f"Research plan:\n"
+            f"- Analysis type: {research_plan.analysis_type}\n"
+            f"- Sub-questions to answer:\n"
+            + "\n".join(f"  {i+1}. {q}" for i, q in enumerate(research_plan.sub_questions))
+            + f"\n- Key metrics to focus on: {', '.join(research_plan.key_metrics)}\n"
+            f"- Suggested chart types: {', '.join(research_plan.suggested_chart_types)}\n\n"
+        )
+
     prompt = (
+        f"{prior_block}"
         f"Original query: {enhanced_query}\n\n"
+        f"{plan_block}"
+        f"{feedback_block}"
         f"Unified dataset from normalization:\n{payload}"
     )
 
@@ -319,3 +357,76 @@ async def run_analysis(
         n_charts=len(result.output.chart_configs),
     )
     return result.output, result.all_messages()
+
+
+analysis_validation_agent = Agent(
+    get_llm_model_with_fallback(),
+    system_prompt="""
+    You are a quality reviewer for a data analytics pipeline.
+
+    Given an enhanced query and a completed AnalysisResult (summary, key_findings, chart_configs),
+    decide whether the analysis actually answers the query.
+
+    Validation criteria:
+    1. QUERY ANSWER: does the summary directly and specifically address what was asked?
+    2. QUANTITATIVE FINDINGS: are key_findings specific and numeric (cite actual numbers),
+       not vague statements?
+    3. CHART APPROPRIATENESS: are the chart types suitable for the data and query type?
+       (trend query → line/area, comparison → bar, composition → pie)
+    4. COMPLETENESS: are there at least 3 key_findings and at least 2 chart_configs?
+    5. DATA SUFFICIENCY: does the analysis reference only a very small number of data points
+       (e.g. fewer than 5 data points cited, a single time period, one category) suggesting
+       the extraction was too narrow or the dataset is genuinely sparse?
+    6. DOMAIN COVERAGE: do the findings actually contain the metrics the query asked for?
+       (e.g. query asks for trade volume but findings only discuss population counts; query asks
+       for employment rates but data shows housing prices — the datasets are clearly mismatched)
+
+    If valid=true: leave feedback empty and do NOT set root_cause.
+
+    If valid=false: set feedback describing exactly what is missing or wrong, then classify
+    root_cause using EXACTLY one of these four values:
+
+    - "insufficient_data"  — the analysis references very few rows (fewer than 5 data points
+      cited), a single time period, or explicitly notes data was sparse or truncated. The right
+      datasets were probably chosen but extraction was too narrow or had overly strict filters.
+      Use this when the datasets seem correct but not enough rows came through.
+
+    - "wrong_datasets"     — the key_findings or summary show that the selected datasets do not
+      contain the metric type the query requires (e.g. query asks for trade metrics but findings
+      discuss population counts; query asks for employment rates but data shows housing prices).
+      Use this only when the datasets are clearly mismatched to the query domain.
+
+    - "poor_synthesis"     — data appears sufficient and relevant but the summary is vague,
+      key_findings lack numbers, findings don't address the query's sub-questions, or the
+      summary doesn't answer what was asked. The problem is analytical quality, not data quality.
+
+    - "chart_quality"      — the only issue is with charts: wrong chart type for the analysis,
+      fewer than 2 charts, or chart keys don't match the data. Use this only when summary and
+      key_findings are acceptable but charts are the sole problem.
+
+    Priority order when multiple issues exist:
+    wrong_datasets > insufficient_data > poor_synthesis > chart_quality
+
+    Do NOT fail for minor stylistic issues — only for substantive analytical gaps.
+    """,
+    output_type=AnalysisValidationOutput,
+)
+
+
+async def validate_analysis(
+    analysis_result: AnalysisResult,
+    enhanced_query: str,
+) -> AnalysisValidationOutput:
+    prompt = (
+        f"Enhanced query: {enhanced_query}\n\n"
+        f"Analysis result:\n{analysis_result.model_dump_json(indent=2)}"
+    )
+    with logfire.span("analysis validation", query=enhanced_query):
+        result = await analysis_validation_agent.run(prompt)
+
+    if result.output.valid:
+        logfire.info("analysis validated", valid=True)
+    else:
+        logfire.info("analysis validation failed", valid=False, feedback=result.output.feedback)
+
+    return result.output

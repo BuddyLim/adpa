@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Any, List, Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
@@ -22,6 +24,7 @@ class CoordinatorDecision(BaseModel):
     reason: str  # always populate — useful for both rejection messages and SSE logs
     enhanced_query: str
     dataset_selected: List[CoordinatorDataset] | None
+    analysis_result: AnalysisResult | None = None  # populated when accepted=True
 
 class ExtractionResult(BaseModel):
     source_dataset: str
@@ -139,3 +142,73 @@ SSEEvent = Annotated[
     Union[StatusEvent, ResultEvent, ToolCallEvent, ToolResultEvent, AnalysisTextEvent, ErrorEvent],
     Field(discriminator="type"),
 ]
+
+
+# ─── Coordinator graph internal schemas ───────────────────────────────────────
+# Used only within coordinator_graph.py — never sent over the SSE wire.
+
+class DatasetInfo(BaseModel):
+    title: str
+    description: str
+    path: str
+
+
+class ConversationMessage(BaseModel):
+    role: str
+    content: str
+
+
+class PriorAnalysis(BaseModel):
+    enhanced_query: str
+    summary: str
+    key_findings: list[str]
+
+
+class IntentAnalysis(BaseModel):
+    is_feasible: bool
+    is_followup: bool
+    domain: str                           # e.g. "transport", "demographics", "housing"
+    enhanced_query: str                   # 2–4 sentence enriched query
+    suggested_prior_datasets: list[str]   # dataset titles from prior runs to re-use
+    rejection_reason: str | None = None   # only set when is_feasible=False
+
+
+class SelectedDataset(BaseModel):
+    title: str
+    path: str
+    selection_reason: str
+
+
+class DatasetSelectionOutput(BaseModel):
+    selected_datasets: list[SelectedDataset]
+    cannot_answer: bool = False
+    reason: str = ""                      # populated when cannot_answer=True
+
+
+class DatasetValidationOutput(BaseModel):
+    valid: bool
+    confirmation_reason: str = ""         # populated when valid=True
+    feedback: str = ""                    # populated when valid=False; fed back to SelectDatasetsNode
+
+
+# ─── Post-analysis validation schema ──────────────────────────────────────────
+
+class AnalysisValidationOutput(BaseModel):
+    valid: bool
+    feedback: str = ""                    # populated when valid=False; injected into re-run prompt
+    root_cause: Literal[
+        "insufficient_data",
+        "wrong_datasets",
+        "poor_synthesis",
+        "chart_quality",
+    ] | None = None                       # only set when valid=False; drives routing in ValidateAnalysisNode
+
+
+# ─── Research plan schema ──────────────────────────────────────────────────────
+
+class ResearchPlan(BaseModel):
+    analysis_type: Literal["trend", "comparison", "ranking", "distribution", "correlation"]
+    sub_questions: list[str]              # 2-4 specific questions the pipeline should answer
+    key_metrics: list[str]                # column names or concepts to prioritise
+    extraction_hints: dict[str, str]      # dataset_title -> per-dataset extraction guidance
+    suggested_chart_types: list[Literal["bar", "line", "area", "pie"]]

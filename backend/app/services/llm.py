@@ -1,3 +1,4 @@
+from pydantic_ai import ModelSettings
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.models.openai import OpenAIResponsesModel
@@ -14,12 +15,14 @@ def get_llm_model_with_fallback():
     Returns OpenAI as primary, with Google as fallback if both keys are available.
     If only one key is available, returns that single provider.
     """
-    primary_provider = OpenAIProvider(api_key=settings.openai_key)
-    primary_model = OpenAIResponsesModel("chatgpt-4o-latest", provider=primary_provider)
+    model_settings = ModelSettings(temperature=0.0)
+
+    primary_provider = OpenAIProvider(api_key=settings.openai_key,)
+    primary_model = OpenAIResponsesModel("chatgpt-4o-latest", provider=primary_provider, settings=model_settings)
 
     secondary_provider = GoogleProvider(api_key=settings.gcp_key)
-    secondary_model = GoogleModel("gemini-3-flash-preview", provider=secondary_provider)
+    secondary_model = GoogleModel("gemini-2.5-flash", provider=secondary_provider, settings=model_settings)
 
-    model = FallbackModel(primary_model, secondary_model)
+    model = FallbackModel(primary_model, secondary_model,)
 
     return model

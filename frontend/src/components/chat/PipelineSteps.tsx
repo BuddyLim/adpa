@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import type { StatusMessage } from '#/queries/chat.queries'
 import { TOOL_COMPONENTS } from '#/components/tools'
 import { TOOL_LABELS } from './types'
-import type { ToolInvocation } from './types'
+import type { TimelineItem } from './types'
 
 function Spinner() {
   return (
@@ -13,7 +12,7 @@ function Spinner() {
 function CheckIcon() {
   return (
     <svg
-      className="w-3 h-3 text-[var(--palm)] shrink-0"
+      className="w-3 h-3 text-(--palm) shrink-0"
       viewBox="0 0 12 12"
       fill="currentColor"
     >
@@ -22,40 +21,62 @@ function CheckIcon() {
   )
 }
 
+function ErrorIcon() {
+  return (
+    <svg
+      className="w-3 h-3 text-red-500 shrink-0"
+      viewBox="0 0 12 12"
+      fill="currentColor"
+    >
+      <path d="M6 1a5 5 0 100 10A5 5 0 006 1zm.75 7.5h-1.5v-1.5h1.5v1.5zm0-3h-1.5v-3h1.5v3z" />
+    </svg>
+  )
+}
+
 export function PipelineSteps({
-  steps,
-  invocations,
+  timeline,
   isFetching,
+  isError = false,
 }: {
-  steps: StatusMessage[]
-  invocations: ToolInvocation[]
+  timeline: TimelineItem[]
   isFetching: boolean
+  isError?: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
-  if (steps.length === 0 && invocations.length === 0) return null
+  const [expanded, setExpanded] = useState(true)
+  if (timeline.length === 0) return null
 
-  const pendingInvocation = invocations.find((inv) => inv.pending)
-  const lastCompletedInvocation = [...invocations]
+  type ToolItem = Extract<TimelineItem, { kind: 'tool' }>
+  const pendingTool = timeline.find(
+    (item): item is ToolItem => item.kind === 'tool' && item.pending,
+  )
+  const lastCompletedTool = [...timeline]
     .reverse()
-    .find((inv) => !inv.pending)
+    .find((item): item is ToolItem => item.kind === 'tool' && !item.pending)
+  const lastStatus = [...timeline]
+    .filter((item) => item.kind === 'status')
+    .at(-1)
 
-  let headerText = steps.at(-1)?.message ?? 'Working…'
+  let headerText = lastStatus?.message ?? 'Working…'
 
   if (!isFetching) {
-    headerText = lastCompletedInvocation?.tool
-      ? (TOOL_LABELS[lastCompletedInvocation.tool]?.done ?? 'Done')
-      : 'Done'
-  } else if (pendingInvocation) {
-    headerText = TOOL_LABELS[pendingInvocation.tool]?.pending ?? headerText
+    if (isError) {
+      headerText = 'Pipeline failed'
+    } else {
+      headerText = lastCompletedTool
+        ? (TOOL_LABELS[lastCompletedTool.tool]?.done ?? 'Done')
+        : 'Done'
+    }
+  } else if (pendingTool) {
+    headerText = TOOL_LABELS[pendingTool.tool]?.pending ?? headerText
   }
 
   return (
-    <div className="rounded-xl border border-[var(--line)] overflow-hidden text-sm bg-[var(--surface-strong)] shadow-sm">
+    <div className="rounded-xl border border-(--line) overflow-hidden text-sm bg-(--surface-strong) shadow-sm">
       <button
-        className="w-full flex items-center gap-2 px-3 py-2 text-left text-[var(--sea-ink-soft)] hover:bg-[var(--chip-bg)] transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-(--sea-ink-soft) hover:bg-(--chip-bg) transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        {isFetching ? <Spinner /> : <CheckIcon />}
+        {isFetching ? <Spinner /> : isError ? <ErrorIcon /> : <CheckIcon />}
         <span className="flex-1 text-xs font-medium">{headerText}</span>
         <svg
           className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -68,37 +89,33 @@ export function PipelineSteps({
         </svg>
       </button>
       {expanded && (
-        <div className="px-3 pb-4 pt-1 space-y-2 border-t border-[var(--line)]">
-          {steps.map((step, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2 text-xs text-[var(--sea-ink-soft)] py-0.5"
-            >
-              {i === steps.length - 1 && isFetching ? (
-                <Spinner />
-              ) : (
-                <CheckIcon />
-              )}
-              <span>{step.message}</span>
-            </div>
-          ))}
-          {invocations.length > 0 && (
-            <div className="space-y-2 pt-1">
-              {invocations.map((inv, i) => {
-                const Component = TOOL_COMPONENTS[inv.tool]
-                // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-                if (!Component) return null
-                return (
-                  <Component
-                    key={`${inv.tool}-${i}`}
-                    args={inv.args}
-                    result={inv.result}
-                    pending={inv.pending}
-                  />
-                )
-              })}
-            </div>
-          )}
+        <div className="px-3 pb-4 pt-1 space-y-2 border-t border-(--line)">
+          {timeline.map((item, i) => {
+            if (item.kind === 'status') {
+              const isLastItem = i === timeline.length - 1
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 text-xs text-(--sea-ink-soft) py-1"
+                >
+                  {isLastItem && isFetching ? <Spinner /> : <CheckIcon />}
+                  <span>{item.message}</span>
+                </div>
+              )
+            }
+            const Component = TOOL_COMPONENTS[item.tool]
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+            if (!Component) return null
+            return (
+              <Component
+                key={`${item.tool}-${i}`}
+                args={item.args}
+                result={item.result}
+                pending={item.pending}
+                failed={item.failed}
+              />
+            )
+          })}
         </div>
       )}
     </div>

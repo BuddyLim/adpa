@@ -19,13 +19,23 @@ import type {
 
 // ─── Shared ───────────────────────────────────────────────────────────────────
 
-function ToolBadge({ label, pending }: { label: string; pending?: boolean }) {
+function ToolBadge({
+  label,
+  pending,
+  failed,
+}: {
+  label: string
+  pending?: boolean
+  failed?: boolean
+}) {
   return (
     <div className="flex items-center gap-2 mb-2">
       {pending ? (
-        <span className="inline-block w-2.5 h-2.5 border-2 border-[var(--lagoon-deep)] border-t-transparent rounded-full animate-spin shrink-0" />
+        <span className="inline-block w-2.5 h-2.5 border-2 border-(--lagoon-deep) border-t-transparent rounded-full animate-spin shrink-0" />
+      ) : failed ? (
+        <span className="w-2.5 h-2.5 rounded-full bg-red-400 shrink-0" />
       ) : (
-        <span className="w-2.5 h-2.5 rounded-full bg-[var(--palm)] shrink-0" />
+        <span className="w-2.5 h-2.5 rounded-full bg-(--palm) shrink-0" />
       )}
       <span className="island-kicker">{label}</span>
     </div>
@@ -34,7 +44,7 @@ function ToolBadge({ label, pending }: { label: string; pending?: boolean }) {
 
 function ToolCard({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-strong)] p-3 text-xs shadow-sm overflow-hidden">
+    <div className="rounded-xl border border-(--line) bg-(--surface-strong) p-3 text-xs shadow-sm overflow-hidden">
       {children}
     </div>
   )
@@ -44,28 +54,32 @@ function ToolCard({ children }: { children: React.ReactNode }) {
 
 export function DatasetListCard({
   result,
+  failed,
 }: {
   args: Record<string, never>
   result?: ListDatasetsResult
   pending: boolean
+  failed: boolean
 }) {
   const datasets = Array.isArray(result) ? result : null
 
   return (
     <ToolCard>
-      <ToolBadge label="Datasets available" pending={!result} />
+      <ToolBadge
+        label={failed ? 'Dataset loading failed' : 'Datasets available'}
+        pending={!result && !failed}
+        failed={failed}
+      />
       {datasets ? (
-        <ul className="space-y-0.5 text-[var(--sea-ink-soft)]">
+        <ul className="space-y-0.5 text-(--sea-ink-soft)">
           {datasets.map((ds, i) => (
             <li key={i} className="whitespace-normal">
-              <span className="font-medium text-[var(--sea-ink)]">
-                {ds.title}
-              </span>
+              <span className="font-medium text-(--sea-ink)">{ds.title}</span>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-[var(--sea-ink-soft)]">Loading datasets…</p>
+        <p className="text-(--sea-ink-soft)">Loading datasets…</p>
       )}
     </ToolCard>
   )
@@ -76,27 +90,33 @@ export function DatasetListCard({
 export function DatasetsSelectedCard({
   result,
   pending,
+  failed,
 }: {
   args: Record<string, never>
   result?: DatasetsSelectedResult
   pending: boolean
+  failed: boolean
 }) {
   return (
     <ToolCard>
-      <ToolBadge label="Datasets selected" pending={pending} />
+      <ToolBadge
+        label={failed ? 'Dataset selection failed' : 'Datasets selected'}
+        pending={pending}
+        failed={failed}
+      />
       {result ? (
-        <ul className="space-y-0.5 text-[var(--sea-ink-soft)]">
+        <ul className="space-y-0.5 text-(--sea-ink-soft)">
           {result.datasets.map((title, i) => (
             <li
               key={i}
-              className="font-medium text-[var(--sea-ink)] whitespace-normal"
+              className="font-medium text-(--sea-ink) whitespace-normal"
             >
               {title}
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-[var(--sea-ink-soft)]">Selecting datasets…</p>
+        <p className="text-(--sea-ink-soft)">Selecting datasets…</p>
       )}
     </ToolCard>
   )
@@ -108,16 +128,25 @@ export function ExtractionCard({
   args,
   result,
   pending,
+  failed,
 }: {
   args: PipelineExtractionArgs
   result?: PipelineExtractionResult
   pending: boolean
+  failed: boolean
 }) {
   return (
     <ToolCard>
       <ToolBadge
-        label={pending ? 'Extracting data…' : 'Data extracted'}
+        label={
+          failed
+            ? 'Extraction failed'
+            : pending
+              ? 'Extracting data…'
+              : 'Data extracted'
+        }
         pending={pending}
+        failed={failed}
       />
       {result ? (
         <div className="space-y-1">
@@ -126,22 +155,22 @@ export function ExtractionCard({
               key={ds.title}
               className="flex items-center justify-between gap-4"
             >
-              <span className="font-medium text-[var(--sea-ink)] whitespace-normal">
+              <span className="font-medium text-(--sea-ink) whitespace-normal">
                 {ds.title}
               </span>
-              <span className="text-[var(--sea-ink-soft)] shrink-0">
+              <span className="text-(--sea-ink-soft) shrink-0">
                 {ds.row_count.toLocaleString()} rows
               </span>
             </div>
           ))}
           {result.datasets.length > 1 && (
-            <p className="pt-1 text-[var(--sea-ink-soft)] border-t border-[var(--line)]">
+            <p className="pt-1 text-(--sea-ink-soft) border-t border-(--line)">
               {result.total_rows.toLocaleString()} rows total
             </p>
           )}
         </div>
       ) : (
-        <p className="text-[var(--sea-ink-soft)]">{args.datasets.join(', ')}</p>
+        <p className="text-(--sea-ink-soft)">{args.datasets.join(', ')}</p>
       )}
     </ToolCard>
   )
@@ -153,25 +182,34 @@ export function NormalizationCard({
   args,
   result,
   pending,
+  failed,
 }: {
   args: PipelineNormalizationArgs
   result?: PipelineNormalizationResult
   pending: boolean
+  failed: boolean
 }) {
   return (
     <ToolCard>
       <ToolBadge
-        label={pending ? 'Normalizing data…' : 'Data normalized'}
+        label={
+          failed
+            ? 'Normalization failed'
+            : pending
+              ? 'Normalizing data…'
+              : 'Data normalized'
+        }
         pending={pending}
+        failed={failed}
       />
       {result ? (
-        <div className="flex items-center gap-3 text-[var(--sea-ink-soft)]">
+        <div className="flex items-center gap-3 text-(--sea-ink-soft)">
           <span>{result.unified_rows.toLocaleString()} unified rows</span>
-          <span className="text-[var(--line)]">·</span>
+          <span className="text-(--line)">·</span>
           <span>{result.columns.length} columns</span>
         </div>
       ) : (
-        <p className="text-[var(--sea-ink-soft)]">
+        <p className="text-(--sea-ink-soft)">
           Merging {args.n_sources} source{args.n_sources !== 1 ? 's' : ''}…
         </p>
       )}
@@ -185,16 +223,25 @@ export function AnalysisCard({
   args,
   result,
   pending,
+  failed,
 }: {
   args: PipelineAnalysisArgs
   result?: PipelineAnalysisResult
   pending: boolean
+  failed: boolean
 }) {
   return (
     <ToolCard>
       <ToolBadge
-        label={pending ? 'Analysing data…' : 'Analysis complete'}
+        label={
+          failed
+            ? 'Analysis failed'
+            : pending
+              ? 'Analysing data…'
+              : 'Analysis complete'
+        }
         pending={pending}
+        failed={failed}
       />
       {result ? (
         <div>
@@ -221,6 +268,7 @@ type ToolCardComponent = (props: {
   args: any
   result?: any
   pending: boolean
+  failed: boolean
 }) => React.ReactElement | null
 
 export const TOOL_COMPONENTS: Record<string, ToolCardComponent> = {

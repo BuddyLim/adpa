@@ -17,6 +17,17 @@ class DatasetSummary(BaseModel):
 
 class StepSummary(BaseModel):
     message: str
+    step_type: str | None = None
+
+
+class ExtractionSummary(BaseModel):
+    datasets: list[dict]  # [{title, row_count}]
+    total_rows: int
+
+
+class NormalizationSummary(BaseModel):
+    unified_rows: int
+    columns: list[str]
 
 
 class PipelineRunResult(BaseModel):
@@ -27,6 +38,8 @@ class PipelineRunResult(BaseModel):
     completed_at: datetime | None
     datasets: list[DatasetSummary]
     steps: list[StepSummary]
+    extraction: ExtractionSummary | None
+    normalization: NormalizationSummary | None
     analysis: AnalysisResult | None
 
 
@@ -103,6 +116,25 @@ async def get_conversation_results(
                 key_findings=ar.key_findings,
                 chart_configs=[ChartConfig.model_validate(c) for c in ar.chart_configs],
             )
+        extraction = None
+        if run.extraction_results:
+            dataset_rows = [
+                {"title": er.source_dataset, "row_count": len(er.rows)}
+                for er in run.extraction_results
+            ]
+            extraction = ExtractionSummary(
+                datasets=dataset_rows,
+                total_rows=sum(d["row_count"] for d in dataset_rows),
+            )
+
+        normalization = None
+        if run.normalization_result:
+            nr = run.normalization_result
+            normalization = NormalizationSummary(
+                unified_rows=len(nr.unified_rows),
+                columns=nr.columns,
+            )
+
         results.append(PipelineRunResult(
             pipeline_run_id=run.id,
             status=run.status,
@@ -110,7 +142,9 @@ async def get_conversation_results(
             created_at=run.created_at,
             completed_at=run.completed_at,
             datasets=[DatasetSummary(id=ds.id, title=ds.title) for ds in run.datasets],
-            steps=[StepSummary(message=s.message) for s in run.steps],
+            steps=[StepSummary(message=s.message, step_type=s.step_type) for s in sorted(run.steps, key=lambda s: s.step_order)],
+            extraction=extraction,
+            normalization=normalization,
             analysis=analysis,
         ))
 

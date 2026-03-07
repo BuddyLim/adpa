@@ -42,13 +42,18 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'APDA',
       },
     ],
     links: [
       {
         rel: 'stylesheet',
         href: appCss,
+      },
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: '/favicon.svg',
       },
     ],
   }),
@@ -64,8 +69,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body className="font-sans antialiased [overflow-wrap:anywhere] selection:bg-[rgba(6,182,212,0.18)]">
         <TanStackQueryProvider>
-            <Header />
-            {children}
+          <Header />
+          {children}
           <TanStackDevtools
             config={{
               position: 'bottom-right',

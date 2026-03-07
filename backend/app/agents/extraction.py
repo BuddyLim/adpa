@@ -75,12 +75,16 @@ extraction_agent = Agent(
       same categories) unless the query explicitly asks otherwise.
 
     Rules:
+    - The ONLY table available in DuckDB is the view named 'dataset'. Every SQL
+      statement you write MUST reference 'dataset' and nothing else. Never use any
+      other table name — there are no other tables, schemas, or databases.
     - Do NOT interpret trends, draw conclusions, or give policy recommendations.
     - Do NOT return all rows — filter to what is directly relevant.
     - Do NOT speculate about column meanings beyond what the schema shows.
     - Do NOT guess categorical values; always call get_unique_values first.
     - If no rows match, return an empty list with a summary explaining why.
     - If execute_query returns truncated=true, tighten your filter and re-run.
+    -
     """,
     output_type=ExtractionResult,
     deps_type=ExtractionDeps,
@@ -136,6 +140,7 @@ def get_unique_values(ctx: RunContext[ExtractionDeps], column: str) -> dict:
     """
     Return distinct values for a single column. Use before filtering on any text/categorical
     column — do NOT guess category names from sample rows alone.
+    The only available table is the view named 'dataset'.
     """
     dataset = ctx.deps.dataset_title
 
@@ -167,6 +172,7 @@ def describe_column(ctx: RunContext[ExtractionDeps], column: str) -> dict:
     Return min, max, mean, and null_count for a column. Use for numeric or date columns
     when the query uses relative terms (e.g. "recent", "top 10%") to understand the
     data range before writing a filter threshold.
+    The only available table is the view named 'dataset'.
     """
     dataset = ctx.deps.dataset_title
 

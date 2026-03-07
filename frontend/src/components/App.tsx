@@ -98,8 +98,10 @@ export function App() {
     const q = currentQuestion.trim()
     if (!q) return
     // Switch to live mode if user types while viewing history
+    if (historicalConvId !== null) {
+      setVisualizationItems([])
+    }
     setHistoricalConvId(null)
-    setVisualizationItems([])
     setQuestions((prev) => [
       ...prev,
       { question: q, convId: currentConvIdRef.current },
@@ -116,9 +118,7 @@ export function App() {
 
   const handleSelectConversation = (id: string) => {
     setHistoricalConvId(id)
-    setVisualizationItems([])
   }
-
   const handleHistoricalVizReady = useCallback((items: VisualizationData[]) => {
     setVisualizationItems(items)
   }, [])
@@ -202,8 +202,8 @@ export function App() {
               }}
               placeholder={
                 isHistoricalMode
-                  ? 'Type to start a new chat…'
-                  : 'Ask about Singapore data…'
+                  ? 'Type to follow up your question'
+                  : 'Ask a question to start a new chat'
               }
             />
             <button

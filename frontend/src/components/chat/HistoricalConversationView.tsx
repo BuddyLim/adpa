@@ -6,34 +6,7 @@ import {
 } from '#/queries/chat.queries'
 import type { VisualizationData } from '#/components/visualization/VisualizationPanel'
 import { PipelineSteps } from './PipelineSteps'
-import type { ToolInvocation } from './types'
-
-function UserBubble({ content }: { content: string }) {
-  return (
-    <div className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm bg-[var(--lagoon-deep)] text-white">
-        {content}
-      </div>
-    </div>
-  )
-}
-
-function AssistantBubble({ content }: { content: string }) {
-  return (
-    <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm bg-(--surface-strong) border border-(--line) leading-relaxed text-(--sea-ink) whitespace-pre-wrap">
-      {content}
-    </div>
-  )
-}
-
-function RejectedBadge({ reason }: { reason: string }) {
-  return (
-    <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 bg-amber-50 border border-amber-200 text-xs text-amber-800">
-      <span className="shrink-0 mt-0.5">⚠</span>
-      <span>{reason}</span>
-    </div>
-  )
-}
+import { AssistantBubble, ErrorBubble, RejectedBadge, UserBubble } from './ChatBubbles'
 
 export function HistoricalConversationView({
   conversationId,
@@ -42,10 +15,10 @@ export function HistoricalConversationView({
   conversationId: string
   onVisualizationReady: (items: VisualizationData[]) => void
 }) {
-  const { data: msgData, isLoading: loadingMsgs } = useQuery(
+  const { data: msgData, isLoading: loadingMsgs, error: msgsError, refetch: refetchMsgs } = useQuery(
     conversationMessagesQueryOptions(conversationId),
   )
-  const { data: resultsData, isLoading: loadingResults } = useQuery(
+  const { data: resultsData, isLoading: loadingResults, error: resultsError, refetch: refetchResults } = useQuery(
     conversationResultsQueryOptions(conversationId),
   )
 
@@ -61,6 +34,23 @@ export function HistoricalConversationView({
       }))
     onVisualizationReady(items)
   }, [resultsData, onVisualizationReady])
+
+  const loadError = msgsError ?? resultsError
+  const refetchAll = () => {
+    if (msgsError) void refetchMsgs()
+    if (resultsError) void refetchResults()
+  }
+
+  if (loadError && !loadingMsgs && !loadingResults) {
+    return (
+      <div className="py-4">
+        <ErrorBubble
+          message={loadError.message}
+          onRetry={refetchAll}
+        />
+      </div>
+    )
+  }
 
   if (loadingMsgs || loadingResults) {
     return (
@@ -98,8 +88,16 @@ export function HistoricalConversationView({
     assistantContent?: string
     status?: string
     reason?: string
-    statusSteps: Array<{ type: 'status'; message: string }>
-    invocations: ToolInvocation[]
+    timeline: Array<
+      | { kind: 'status'; message: string }
+      | {
+          kind: 'tool'
+          tool: string
+          args: unknown
+          result: unknown
+          pending: boolean
+        }
+    >
   }> = []
 
   let resultIdx = 0
@@ -112,39 +110,75 @@ export function HistoricalConversationView({
     const run = results[resultIdx]
     resultIdx++
 
-    const statusSteps = run.steps.map((s) => ({
-      type: 'status' as const,
-      message: s.message,
-    }))
+    const timeline: (typeof pairs)[number]['timeline'] = []
 
-    const invocations: ToolInvocation[] = []
-    if (run.datasets.length > 0) {
-      invocations.push({
-        tool: 'coordinator/datasets_selected',
-        args: {},
-        result: { datasets: run.datasets.map((d) => d.title) },
-        pending: false,
-      })
-    }
-    if (run.analysis) {
-      invocations.push({
-        tool: 'pipeline/analysis',
-        args: { unified_rows: 0, columns: [] },
-        result: run.analysis,
-        pending: false,
-      })
+    for (const step of run.steps) {
+      timeline.push({ kind: 'status', message: step.message })
+
+      // Insert tool cards after the step that precedes them in the live stream
+      if (step.step_type === 'dataset_found') {
+        if (run.datasets.length > 0) {
+          timeline.push({
+            kind: 'tool',
+            tool: 'coordinator/datasets_selected',
+            args: {},
+            result: { datasets: run.datasets.map((d) => d.title) },
+            pending: false,
+          })
+        }
+        if (run.extraction) {
+          timeline.push({
+            kind: 'tool',
+            tool: 'pipeline/extraction',
+            args: { datasets: run.extraction.datasets.map((d) => d.title) },
+            result: {
+              datasets: run.extraction.datasets,
+              total_rows: run.extraction.total_rows,
+            },
+            pending: false,
+          })
+        }
+      } else if (step.step_type === 'normalization' && run.normalization) {
+        timeline.push({
+          kind: 'tool',
+          tool: 'pipeline/normalization',
+          args: {
+            n_sources: run.datasets.length,
+            datasets: run.datasets.map((d) => d.title),
+          },
+          result: {
+            unified_rows: run.normalization.unified_rows,
+            columns: run.normalization.columns,
+          },
+          pending: false,
+        })
+      } else if (step.step_type === 'analysis' && run.analysis) {
+        timeline.push({
+          kind: 'tool',
+          tool: 'pipeline/analysis',
+          args: {
+            unified_rows:
+              run.normalization?.unified_rows ??
+              run.extraction?.total_rows ??
+              0,
+            columns: run.normalization?.columns ?? [],
+          },
+          result: run.analysis,
+          pending: false,
+        })
+      }
     }
 
     pairs.push({
       userContent: msg.content,
-      assistantContent: run.status === 'rejected' ? undefined : assistant?.content,
+      assistantContent:
+        run.status === 'rejected' ? undefined : assistant?.content,
       status: run.status,
       reason:
         run.status === 'rejected'
           ? (assistant?.content ?? 'Query was not accepted')
           : undefined,
-      statusSteps,
-      invocations,
+      timeline,
     })
   }
 
@@ -153,10 +187,11 @@ export function HistoricalConversationView({
       {pairs.map((pair, idx) => (
         <div key={idx} className="space-y-3">
           <UserBubble content={pair.userContent} />
-          {(pair.statusSteps.length > 0 || pair.invocations.length > 0) && (
+          {pair.timeline.length > 0 && (
             <PipelineSteps
-              steps={pair.statusSteps}
-              invocations={pair.invocations}
+              timeline={
+                pair.timeline as Parameters<typeof PipelineSteps>[0]['timeline']
+              }
               isFetching={false}
             />
           )}

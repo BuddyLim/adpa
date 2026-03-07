@@ -216,7 +216,16 @@ export const PipelineRunResultSchema = z.object({
   created_at: z.string(),
   completed_at: z.string().nullable(),
   datasets: z.array(z.object({ id: z.string(), title: z.string() })),
-  steps: z.array(z.object({ message: z.string() })).default([]),
+  steps: z.array(z.object({ message: z.string(), step_type: z.string().nullish() })).default([]),
+  extraction: z
+    .object({
+      datasets: z.array(z.object({ title: z.string(), row_count: z.number() })),
+      total_rows: z.number(),
+    })
+    .nullable(),
+  normalization: z
+    .object({ unified_rows: z.number(), columns: z.array(z.string()) })
+    .nullable(),
   analysis: PipelineAnalysisResultSchema.nullable(),
 })
 
@@ -266,7 +275,10 @@ async function* chatAnswer(
     throw new Error(`Stream request failed: ${streamResponse.statusText}`)
   }
 
-  const reader = streamResponse.body!.getReader()
+  if (!streamResponse.body) {
+    throw new Error('Stream response has no body')
+  }
+  const reader = streamResponse.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
 

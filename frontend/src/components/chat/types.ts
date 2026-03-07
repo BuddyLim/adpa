@@ -1,11 +1,16 @@
-import type { ToolCallMessage, ToolResultMessage } from '#/queries/chat.queries'
+import type { PipelineMessage, ToolCallMessage, ToolResultMessage } from '#/queries/chat.queries'
 
 export interface ToolInvocation {
   tool: ToolCallMessage['tool']
   args: ToolCallMessage['args']
   result: ToolResultMessage['result'] | undefined
   pending: boolean
+  failed: boolean
 }
+
+export type TimelineItem =
+  | { kind: 'status'; message: string }
+  | ({ kind: 'tool' } & ToolInvocation)
 
 export const TOOL_LABELS: Partial<
   Record<ToolCallMessage['tool'], { pending: string; done: string }>
@@ -32,29 +37,35 @@ export const TOOL_LABELS: Partial<
   },
 }
 
-export function buildToolInvocations(
-  calls: ToolCallMessage[],
-  results: ToolResultMessage[],
-): ToolInvocation[] {
-  const resultIndexByTool: Partial<Record<ToolCallMessage['tool'], number>> = {}
-  const resultsByTool: Partial<
-    Record<ToolCallMessage['tool'], ToolResultMessage[]>
-  > = {}
+export function buildTimeline(messages: PipelineMessage[], rejected?: boolean): TimelineItem[] {
+  const items: TimelineItem[] = []
 
-  for (const r of results) {
-    const bucket = (resultsByTool[r.tool] ??= [])
-    bucket.push(r)
+  for (const msg of messages) {
+    if (msg.type === 'status') {
+      items.push({ kind: 'status', message: msg.message })
+    } else if (msg.type === 'tool_call') {
+      items.push({ kind: 'tool', tool: msg.tool, args: msg.args, result: undefined, pending: true, failed: false })
+    } else if (msg.type === 'tool_result') {
+      // Find the last pending tool item with the same tool name and resolve it
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i]
+        if (item.kind === 'tool' && item.tool === msg.tool && item.pending) {
+          items[i] = { ...item, result: msg.result, pending: false }
+          break
+        }
+      }
+    }
   }
 
-  return calls.map((call) => {
-    const idx = resultIndexByTool[call.tool] ?? 0
-    const matchingResult = resultsByTool[call.tool]?.[idx]
-    resultIndexByTool[call.tool] = idx + 1
-    return {
-      tool: call.tool,
-      args: call.args,
-      result: matchingResult?.result,
-      pending: !matchingResult,
+  // On rejection, any tool that never received a result was abandoned mid-flight
+  if (rejected) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.kind === 'tool' && item.pending) {
+        items[i] = { ...item, pending: false, failed: true }
+      }
     }
-  })
+  }
+
+  return items
 }

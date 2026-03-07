@@ -200,6 +200,8 @@ class PipelineRepository:
                 .options(
                     selectinload(PipelineRun.datasets),
                     selectinload(PipelineRun.steps),
+                    selectinload(PipelineRun.extraction_results),
+                    selectinload(PipelineRun.normalization_result),
                     selectinload(PipelineRun.analysis_result),
                 )
                 .where(PipelineRun.conversation_id == conversation_id)

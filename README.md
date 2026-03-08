@@ -4,7 +4,8 @@ APDA lets you query Singapore government policy datasets using plain English. A 
 
 Demo:
 
-https://github.com/user-attachments/assets/a484bef3-2c87-4cc5-8923-9cfca9e0f5f5
+https://github.com/user-attachments/assets/a6715173-e9ac-4957-8b31-f501c5e21366
+
 
 
 

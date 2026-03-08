@@ -5,7 +5,7 @@ from pydantic_ai import models
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
-from app.agents.coordinator_graph import (
+from app.agents.coordinator import (
     dataset_selector_agent,
     dataset_validator_agent,
     intent_agent,

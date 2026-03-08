@@ -7,19 +7,19 @@ from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_graph import End
 
-from app.agents.coordinator_graph import (
+import app.agents.coordinator_nodes as coordinator_nodes
+from app.agents.coordinator import dataset_validator_agent, intent_agent
+from app.agents.coordinator_nodes import (
     AnalyzeIntentNode,
     AnalyzeNode,
-    CoordinatorState,
     LoadContextNode,
     NormalizeNode,
     PlanResearchNode,
     SelectDatasetsNode,
     ValidateAnalysisNode,
     ValidateDatasetPlanNode,
-    dataset_validator_agent,
-    intent_agent,
 )
+from app.agents.coordinator_state import CoordinatorState
 from app.schemas.query import (
     AnalysisResult,
     AnalysisValidationOutput,
@@ -279,7 +279,7 @@ async def test_normalize_node_normalization_raises():
     repo = make_mock_repo()
     ctx = make_ctx(state, repo)
 
-    with patch("app.agents.coordinator_graph.run_normalization", side_effect=RuntimeError("norm failed")):
+    with patch.object(coordinator_nodes, "run_normalization", side_effect=RuntimeError("norm failed")):
         result = await NormalizeNode().run(ctx)
 
     assert isinstance(result, End)
@@ -298,7 +298,7 @@ async def test_validate_analysis_node_valid():
     ctx = make_ctx(state)
 
     valid_output = AnalysisValidationOutput(valid=True)
-    with patch("app.agents.coordinator_graph.validate_analysis", return_value=valid_output):
+    with patch.object(coordinator_nodes, "validate_analysis", return_value=valid_output):
         result = await ValidateAnalysisNode().run(ctx)
 
     assert isinstance(result, End)
@@ -319,7 +319,7 @@ async def test_validate_analysis_node_wrong_datasets():
         feedback="Datasets contain housing data, not transport metrics.",
         root_cause="wrong_datasets",
     )
-    with patch("app.agents.coordinator_graph.validate_analysis", return_value=bad_output):
+    with patch.object(coordinator_nodes, "validate_analysis", return_value=bad_output):
         result = await ValidateAnalysisNode().run(ctx)
 
     assert isinstance(result, SelectDatasetsNode)

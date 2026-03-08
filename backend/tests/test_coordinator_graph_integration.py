@@ -6,17 +6,17 @@ from pydantic_ai import models
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
-from app.agents.coordinator_graph import (
-    CoordinatorGraphDeps,
-    CoordinatorState,
-    LoadContextNode,
-    coordinator_graph,
+import app.agents.coordinator_nodes as coordinator_nodes
+from app.agents.coordinator import (
     dataset_selector_agent,
     dataset_validator_agent,
-    extraction_agent,
     intent_agent,
     research_planner_agent,
 )
+from app.agents.coordinator_graph import coordinator_graph
+from app.agents.coordinator_nodes import LoadContextNode
+from app.agents.coordinator_state import CoordinatorGraphDeps, CoordinatorState
+from app.agents.extraction import extraction_agent
 from app.agents.extraction import PeerSchema
 from app.schemas.query import AnalysisResult, AnalysisValidationOutput, ChartConfig
 
@@ -165,10 +165,10 @@ async def test_happy_path_full_graph():
         dataset_validator_agent.override(model=FunctionModel(_validator_valid)),
         research_planner_agent.override(model=FunctionModel(_planner_happy)),
         extraction_agent.override(model=FunctionModel(_extraction_happy)),
-        patch("app.agents.coordinator_graph.load_schema", return_value=fake_schema),
-        patch("app.agents.coordinator_graph.ExtractionDeps", make_mock_extraction_deps()),
-        patch("app.agents.coordinator_graph.run_analysis", new=AsyncMock(return_value=(fake_analysis, None))),
-        patch("app.agents.coordinator_graph.validate_analysis", new=AsyncMock(return_value=AnalysisValidationOutput(valid=True))),
+        patch.object(coordinator_nodes, "load_schema", return_value=fake_schema),
+        patch.object(coordinator_nodes, "ExtractionDeps", make_mock_extraction_deps()),
+        patch.object(coordinator_nodes, "run_analysis", new=AsyncMock(return_value=(fake_analysis, None))),
+        patch.object(coordinator_nodes, "validate_analysis", new=AsyncMock(return_value=AnalysisValidationOutput(valid=True))),
     ):
         result = await coordinator_graph.run(LoadContextNode(), state=state, deps=deps)
 

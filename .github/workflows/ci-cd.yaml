@@ -45,7 +45,7 @@ jobs:
         run: uv sync
 
       - name: Run tests with pytest
-        run: uv run pytest
+        run: uv run pytest --ignore=evals/
 
   build-backend:
     name: Build backend

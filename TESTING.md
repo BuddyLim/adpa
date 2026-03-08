@@ -101,10 +101,10 @@ These tests make real OpenAI API calls and score outputs against numeric thresho
 - Structured `Case` and `Dataset` definitions keep eval inputs and expected outputs version-controlled alongside the code.
 - Numeric `Evaluator` classes produce scores that can be asserted with thresholds in `pytest`, enabling CI failure on quality regression.
 - The `report.print()` output shows per-case pass/fail detail for debugging.
+- Sample pydantic eval in logfire web portal UI:
+  ![alt text](docs/evals.png)
 
----
-
-## Hallucination Detection
+## Improving Answer's Quality
 
 APDA uses several layers to prevent the LLM from fabricating answers:
 

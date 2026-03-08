@@ -22,9 +22,15 @@ SQLite / PostgreSQL  (pipeline state, results, conversation history)
 DuckDB (in-process SQL over CSV datasets)
 ```
 
+Note:
+
+- I've used SSE over Websockets as for this platform to handle real time streaming as there's no need for bidirectional data flow.
+- Datasets has already been loaded into the application via `backend/app/mock_data`.
+  See DATA_SOURCES.md for more info.
+
 ---
 
-## FSM Pipeline
+## Finite State Machine (FSM) Pipeline
 
 The pipeline is a directed graph of 9 nodes. Each node runs an LLM agent or a deterministic step, updates shared `CoordinatorState`, then routes to the next node.
 
@@ -112,7 +118,33 @@ The FSM replaced the linear function with typed graph nodes so the pipeline can 
 
 ---
 
+## Key Design Decisions
+
+**FSM over a linear pipeline**:<br>
+A linear pipeline cannot recover from partial failures or route conditionally. The FSM lets `ValidateAnalysisNode` retry upstream nodes with structured feedback, enabling potentially improved output quality without a full restart.
+
+**DuckDB for dataset queries**:<br>
+CSV datasets are queried in-process with DuckDB. This eliminates an ETL step, keeps the deployment simple (no separate data warehouse), and supports full SQL including joins across multiple files.
+
+**pydantic-ai for agent I/O**:<br>
+Every agent declares a structured `output_type` (a Pydantic model). This eliminates string parsing, provides automatic validation, and makes agent contracts explicit and testable.
+
+**SSE for real-time progress**:<br>
+Queries can take 20-60 seconds end-to-end. SSE pushes node-level status events, tool calls, and tool results to the browser incrementally so users see progress rather than a blank loading state.
+
+**pydantic-ai for multicloud llm integration**:<br>
+pydantic-ai allows fallback model behaviours if there is any issue for the providers. Currently the application does it in a way where if there's any issues with OpenAI models, we fallback to Gemini models. Easiest way to test the fallback is just set `OPENAI_KEY=abc` in `/backend/.env` and a valid `GCP_KEY`. In logfire dashboard you'll be able to see fallback traces.
+
+Sample fallback trace in logfire:
+![alt text](docs/image.png)
+
+---
+
 ## Agent Reference
+
+### Prev: coordinator_agent -> Now: coordinator_graph
+
+- The v1 linear pipeline had a coordinator_agent that was similar to the intent_agent below. As each agent came about during the building process, the coordinator_agent role was more suitable as a FSM in which it declares the workflow, making decisions deterministic, while allowing individual nodes handle tasks with agentic behaviour. Landing this platform with a hybrid approach.
 
 ### intent_agent
 
@@ -341,20 +373,5 @@ User
 - **Styling:** Tailwind CSS v4
 - **Key routes:**
   - `/` - conversation list and new query input
-  - `/conversations/:id` - message thread with streaming results panel and chart visualizations
 
 ---
-
-## Key Design Decisions
-
-**FSM over a linear pipeline**
-A linear pipeline cannot recover from partial failures or route conditionally. The FSM lets `ValidateAnalysisNode` retry upstream nodes with structured feedback, improving output quality without a full restart.
-
-**DuckDB for dataset queries**
-CSV datasets are queried in-process with DuckDB. This eliminates an ETL step, keeps the deployment simple (no separate data warehouse), and supports full SQL including joins across multiple files.
-
-**pydantic-ai for agent I/O**
-Every agent declares a structured `output_type` (a Pydantic model). This eliminates string parsing, provides automatic validation, and makes agent contracts explicit and testable.
-
-**SSE for real-time progress**
-Queries can take 20-60 seconds end-to-end. SSE pushes node-level status events, tool calls, and tool results to the browser incrementally so users see progress rather than a blank loading state.

@@ -2,6 +2,9 @@
 
 APDA lets you query Singapore government policy datasets using plain English. A multi-agent pipeline powered by `pydantic-ai` and `pydantic-graph` interprets your question, selects relevant datasets, runs SQL via DuckDB, and streams results back to the browser in real time over Server-Sent Events (SSE).
 
+Demo:
+![demo](docs/adpa-showcase.mov)
+
 ---
 
 ## Architecture
@@ -37,11 +40,11 @@ cp backend/.env.example backend/.env
 
 Open `backend/.env` and fill in:
 
-| Variable         | Description            |
-| ---------------- | ---------------------- |
-| `OPENAI_API_KEY` | Your OpenAI API key    |
-| `GCP_KEY`        | Your GCP API key       |
-| `LOGFIRE_TOKEN`  | Pydantic Logfire token |
+| Variable                   | Description            |
+| -------------------------- | ---------------------- |
+| `OPENAI_API_KEY`           | Your OpenAI API key    |
+| `GCP_KEY`                  | Your GCP API key       |
+| `LOGFIRE_TOKEN` (Optional) | Pydantic Logfire token |
 
 ### 3. Start the backend
 

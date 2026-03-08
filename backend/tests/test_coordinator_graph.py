@@ -1,6 +1,6 @@
 import pytest
 
-from app.agents.coordinator_graph import _format_conversation_for_prompt, _require
+from app.agents.coordinator_nodes import _format_conversation_for_prompt, _require
 from app.schemas.query import ConversationMessage
 
 pytestmark = pytest.mark.anyio

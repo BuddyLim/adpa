@@ -17,12 +17,17 @@ def get_llm_model_with_fallback():
     """
     model_settings = ModelSettings(temperature=0.0)
 
-    primary_provider = OpenAIProvider(api_key=settings.openai_key,)
-    primary_model = OpenAIResponsesModel("chatgpt-4o-latest", provider=primary_provider, settings=model_settings)
+    models = []
 
-    secondary_provider = GoogleProvider(api_key=settings.gcp_key)
-    secondary_model = GoogleModel("gemini-2.5-flash", provider=secondary_provider, settings=model_settings)
+    if settings.openai_key:
+        primary_provider = OpenAIProvider(api_key=settings.openai_key)
+        models.append(OpenAIResponsesModel("gpt-5-chat-latest", provider=primary_provider, settings=model_settings))
 
-    model = FallbackModel(primary_model, secondary_model,)
+    if settings.gcp_key:
+        secondary_provider = GoogleProvider(api_key=settings.gcp_key)
+        models.append(GoogleModel("gemini-2.5-flash", provider=secondary_provider, settings=model_settings))
 
-    return model
+    if not models:
+        raise RuntimeError("No LLM API keys configured. Set OPENAI_KEY or GCP_KEY.")
+
+    return models[0] if len(models) == 1 else FallbackModel(*models)

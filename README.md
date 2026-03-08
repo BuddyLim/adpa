@@ -3,7 +3,10 @@
 APDA lets you query Singapore government policy datasets using plain English. A multi-agent pipeline powered by `pydantic-ai` and `pydantic-graph` interprets your question, selects relevant datasets, runs SQL via DuckDB, and streams results back to the browser in real time over Server-Sent Events (SSE).
 
 Demo:
-![demo](docs/adpa-showcase.mov)
+
+https://github.com/user-attachments/assets/a484bef3-2c87-4cc5-8923-9cfca9e0f5f5
+
+
 
 ---
 

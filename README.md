@@ -6,6 +6,11 @@ Demo:
 
 https://github.com/user-attachments/assets/a6715173-e9ac-4957-8b31-f501c5e21366
 
+Equivalent traces and spans during the demo run:
+
+<img width="835" height="645" alt="image" src="https://github.com/user-attachments/assets/71800f3f-49b2-4a5f-bca2-3043da5e9b38" />
+
+
 ---
 
 ## Architecture

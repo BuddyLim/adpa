@@ -6,9 +6,6 @@ Demo:
 
 https://github.com/user-attachments/assets/a6715173-e9ac-4957-8b31-f501c5e21366
 
-
-
-
 ---
 
 ## Architecture
@@ -46,7 +43,7 @@ Open `backend/.env` and fill in:
 
 | Variable                   | Description            |
 | -------------------------- | ---------------------- |
-| `OPENAI_API_KEY`           | Your OpenAI API key    |
+| `OPENAI_KEY`               | Your OpenAI API key    |
 | `GCP_KEY`                  | Your GCP API key       |
 | `LOGFIRE_TOKEN` (Optional) | Pydantic Logfire token |
 

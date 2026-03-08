@@ -16,6 +16,7 @@ jobs:
     env:
       OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
       GCP_KEY: ${{ secrets.GCP_KEY }}
+      LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 

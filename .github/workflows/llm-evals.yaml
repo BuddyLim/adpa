@@ -5,12 +5,21 @@ on:
     branches: ["main"]
     paths:
       - "backend/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to run evals against
+        required: true
+        default: DEV
+        type: choice
+        options:
+          - DEV
 
 jobs:
   llm-evals:
     name: Run LLM evals
     runs-on: ubuntu-latest
-    environment: DEV
+    environment: ${{ inputs.environment || 'DEV' }}
     defaults:
       run:
         working-directory: backend

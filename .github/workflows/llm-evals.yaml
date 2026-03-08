@@ -10,6 +10,7 @@ jobs:
   llm-evals:
     name: Run LLM evals
     runs-on: ubuntu-latest
+    environment: DEV
     defaults:
       run:
         working-directory: backend

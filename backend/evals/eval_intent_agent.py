@@ -19,7 +19,7 @@ import pytest
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
-from app.agents.coordinator_graph import intent_agent
+from app.agents.coordinator import intent_agent
 from app.schemas.query import IntentAnalysis
 
 

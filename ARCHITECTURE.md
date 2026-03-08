@@ -63,6 +63,37 @@ End (completed)
 
 - `ValidateAnalysisNode` can route back to `SelectDatasetsNode` (if datasets were likely wrong) or to `PlanResearchNode` (if the research plan needs refinement). Up to 2 backward re-entries (`pipeline_iterations`) are allowed before the run completes with whatever result exists.
 
+### Pipeline Evolution: Linear to FSM
+
+The pipeline was rewritten to be more agentic, after laying down the key pieces of the application, enabling self-validation and conditional recovery rather than blindly executing a fixed sequence of steps.
+
+#### v1 - Linear Pipeline (`app/services/pipeline.py`)
+
+```
+run_pipeline()
+    |
+    v
+coordinator_agent         (single agent: gating + dataset selection in one step)
+    |
+    v [accepted]
+extraction_agent x N      (parallel asyncio.gather per dataset)
+    |
+    v
+normalization_agent       (skipped if only 1 dataset)
+    |
+    v
+analysis_agent
+    |
+    v
+stream_narrative          (streams assistant prose to frontend)
+```
+
+Stages ran in a fixed order with no conditional routing. A bad dataset selection or a weak analysis result was returned as-is with no retry.
+
+### v2 - FSM Pipeline
+
+The FSM replaced the linear function with typed graph nodes so the pipeline can validate its own outputs and route backward when quality is insufficient. See the [FSM Pipeline](#fsm-pipeline) section above for the full diagram.
+
 ---
 
 ## Node Descriptions

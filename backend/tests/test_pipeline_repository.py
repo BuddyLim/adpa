@@ -9,7 +9,14 @@ from sqlalchemy.orm import selectinload
 from app.db.database import Base
 from app.db.models import Dataset, PipelineRun
 from app.repositories.pipeline import PipelineRepository
-from app.schemas.query import CoordinatorDataset, CoordinatorDecision
+from app.schemas.query import (
+    AnalysisResult,
+    ChartConfig,
+    CoordinatorDataset,
+    CoordinatorDecision,
+    ExtractionResult,
+    NormalizationResult,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -103,3 +110,79 @@ async def test_pipeline_run_rejection(db_setup):
     assert run.reason == "No relevant dataset found"
     assert run.datasets == []
     assert all_datasets == []
+
+
+async def test_save_and_retrieve_artifacts(db_setup):
+    """Full artifact chain: save extraction + normalization + analysis, retrieve via get_conversation_results."""
+    repo, TestSession = db_setup
+    run_id = str(uuid.uuid4())
+
+    conv_id = await repo.create_conversation()
+    msg_id = await repo.create_user_message(conv_id, "Analyse commute modes.")
+    await repo.create_pipeline_run(run_id, msg_id, conv_id)
+
+    extraction = ExtractionResult(
+        source_dataset="commute.csv",
+        summary="Transport mode counts",
+        rows=[{"transport_mode": "Bus", "count": 1000}],
+        join_keys=[],
+        sql_query="SELECT * FROM dataset",
+        truncated=False,
+    )
+    await repo.save_extraction_results(run_id, [extraction])
+
+    normalization = NormalizationResult(
+        notes="Single dataset, no merging needed.",
+        unified_rows=[{"transport_mode": "Bus", "count": 1000}],
+        columns=["transport_mode", "count"],
+    )
+    await repo.save_normalization_result(run_id, normalization)
+
+    analysis = AnalysisResult(
+        summary="Bus is the dominant mode.",
+        key_findings=["Bus: 1000 daily trips."],
+        chart_configs=[
+            ChartConfig(
+                chart_type="bar",
+                title="Mode Usage",
+                description="Daily trips by mode",
+                x_key="transport_mode",
+                y_keys=["count"],
+                series_labels={"count": "Daily Trips"},
+                data=[{"transport_mode": "Bus", "count": 1000}],
+            )
+        ],
+    )
+    await repo.save_analysis_result(run_id, analysis)
+
+    runs = await repo.get_conversation_results(conv_id)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert len(run.extraction_results) == 1
+    assert run.extraction_results[0].source_dataset == "commute.csv"
+    assert run.normalization_result is not None
+    assert run.normalization_result.notes == "Single dataset, no merging needed."
+    assert run.analysis_result is not None
+    assert run.analysis_result.summary == "Bus is the dominant mode."
+
+
+async def test_fail_run_records_failure(db_setup):
+    """fail_run marks the run as failed with the correct stage and error message."""
+    repo, TestSession = db_setup
+    run_id = str(uuid.uuid4())
+
+    conv_id = await repo.create_conversation()
+    msg_id = await repo.create_user_message(conv_id, "What are the housing trends?")
+    await repo.create_pipeline_run(run_id, msg_id, conv_id)
+
+    await repo.fail_run(run_id, "extraction", "DuckDB: table not found")
+
+    async with TestSession() as db:
+        result = await db.execute(select(PipelineRun).where(PipelineRun.id == run_id))
+        run = result.scalar_one()
+
+    assert run.status == "failed"
+    assert run.error_stage == "extraction"
+    assert run.error_message == "DuckDB: table not found"
+    assert run.completed_at is not None

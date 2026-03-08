@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-logfire.configure()
+logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx(capture_all=True)
 logfire.instrument_sqlalchemy(engine=database.engine)

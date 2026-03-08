@@ -1,0 +1,32 @@
+name: LLM Evals
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+
+jobs:
+  llm-evals:
+    name: Run LLM evals
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+      GCP_KEY: ${{ secrets.GCP_KEY }}
+      LOGFIRE_TOKEN: ${{ secrets.LOGFIRE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: 0.9.5
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run LLM evals
+        run: uv run pytest evals/ -v -s --tb=short

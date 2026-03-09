@@ -8,7 +8,6 @@ from pydantic_ai.models.fallback import FallbackModel
 import openai
 from app.config import settings
 
-
 def get_llm_model_with_fallback():
     """Create LLM model with fallback support.
 

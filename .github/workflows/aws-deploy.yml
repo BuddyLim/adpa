@@ -3,6 +3,12 @@ name: AWS Deploy (Manual)
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'DEV'
+        type: choice
+        options: [DEV]
       service:
         description: 'Which service to deploy'
         required: true
@@ -23,6 +29,7 @@ jobs:
   deploy-backend:
     name: Deploy backend
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
     if: ${{ github.event.inputs.service == 'both' || github.event.inputs.service == 'backend' }}
     steps:
       - uses: actions/checkout@v4
@@ -109,6 +116,7 @@ jobs:
   deploy-frontend:
     name: Deploy frontend
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
     needs: [deploy-backend]
     if: |
       always() &&

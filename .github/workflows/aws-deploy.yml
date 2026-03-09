@@ -1,10 +1,14 @@
-name: APDA CI/CD
+name: AWS Deploy (Manual)
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Which service to deploy'
+        required: true
+        default: 'both'
+        type: choice
+        options: [both, backend, frontend]
 
 env:
   AWS_REGION: ap-southeast-1
@@ -14,93 +18,12 @@ env:
 permissions:
   id-token: write
   contents: read
-  pull-requests: read
 
 jobs:
-  secret-scan:
-    name: TruffleHog secret scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@main
-        with:
-          extra_args: --only-verified
-
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.changes.outputs.backend }}
-      frontend: ${{ steps.changes.outputs.frontend }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: changes
-        with:
-          filters: |
-            backend:
-              - 'backend/**'
-            frontend:
-              - 'frontend/**'
-
-  test-backend:
-    name: Test backend
-    runs-on: ubuntu-latest
-    needs: [secret-scan, check-changes]
-    if: needs.check-changes.outputs.backend == 'true'
-    defaults:
-      run:
-        working-directory: backend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: 0.9.5
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Run tests with pytest
-        run: uv run pytest --ignore=evals/
-
-  test-frontend:
-    name: Test frontend
-    runs-on: ubuntu-latest
-    needs: [secret-scan, check-changes]
-    if: needs.check-changes.outputs.frontend == 'true'
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build (validation)
-        run: npm run build
-
-  # ── CD: push to main only ─────────────────────────────────────────────────
-
   deploy-backend:
     name: Deploy backend
     runs-on: ubuntu-latest
-    needs: [check-changes, test-backend]
-    if: |
-      github.event_name == 'push' &&
-      needs.check-changes.outputs.backend == 'true'
+    if: ${{ github.event.inputs.service == 'both' || github.event.inputs.service == 'backend' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -173,13 +96,23 @@ jobs:
             --output text)
           aws apprunner wait service-running --service-arn $SERVICE_ARN
 
+      - name: Print backend URL
+        run: |
+          SERVICE_ARN=$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='$BACKEND_SERVICE'].ServiceArn" \
+            --output text)
+          URL=$(aws apprunner describe-service \
+            --service-arn $SERVICE_ARN \
+            --query "Service.ServiceUrl" --output text)
+          echo "Backend: https://$URL"
+
   deploy-frontend:
     name: Deploy frontend
     runs-on: ubuntu-latest
-    needs: [check-changes, test-frontend, deploy-backend]
+    needs: [deploy-backend]
     if: |
-      github.event_name == 'push' &&
-      needs.check-changes.outputs.frontend == 'true' &&
+      always() &&
+      (github.event.inputs.service == 'both' || github.event.inputs.service == 'frontend') &&
       (needs.deploy-backend.result == 'success' || needs.deploy-backend.result == 'skipped')
     steps:
       - uses: actions/checkout@v4

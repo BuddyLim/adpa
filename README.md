@@ -10,7 +10,6 @@ Equivalent traces and spans during the demo run:
 
 <img width="835" height="645" alt="image" src="https://github.com/user-attachments/assets/71800f3f-49b2-4a5f-bca2-3043da5e9b38" />
 
-
 ---
 
 ## Architecture
@@ -113,11 +112,55 @@ See [TESTING.md](TESTING.md) for a full description of the testing strategy, eva
 
 ## Sample Queries
 
-| Query                                                                | Domain    |
-| -------------------------------------------------------------------- | --------- |
-| "What is the commuting trend of males in 2010?"                      | Transport |
-| "What is the commuting trend of males in 2010 to 2015?"              | Transport |
-| "What is the commuting trend of males vs females from 2010 to 2015?" | Transport |
+| Query                                                                                | Domain    |
+| ------------------------------------------------------------------------------------ | --------- |
+| "What is the percentage of people taking public transport in 2015?"                  | Transport |
+| "What are the difference between males and females taking public transport in 2015?" | Transport |
+| "What is the trend in terms of age for public transport in 2010 to 2015?"            | Transport |
+
+---
+
+## CI/CD & Deployment
+
+### Workflows
+
+| Workflow           | Trigger                      | What it does                                                            |
+| ------------------ | ---------------------------- | ----------------------------------------------------------------------- |
+| `ci-cd.yaml`       | Push / PR to `main`          | Secret scan, tests; auto-deploys to App Runner on push if files changed |
+| `aws-deploy.yml`   | Manual (`workflow_dispatch`) | Deploy backend, frontend, or both to a target environment               |
+| `aws-teardown.yml` | Manual (`workflow_dispatch`) | Delete App Runner services and clear ECR images                         |
+
+### Infrastructure
+
+- **Cloud**: AWS `ap-southeast-1`
+- **Hosting**: AWS App Runner — `apda-backend` (port 8000), `apda-frontend` (port 3000)
+- **Images**: ECR repositories `apda/backend:latest` and `apda/frontend:latest`
+- **Auth**: GitHub OIDC → IAM role `github-actions` (no long-lived AWS credentials stored)
+
+### Deployment Flow
+
+1. Backend image is built and pushed to ECR
+2. App Runner service is created (first run) or updated
+3. Frontend image is built with `VITE_API_URL` injected as a Docker build arg — the backend URL is **baked into the bundle** at build time
+4. Frontend App Runner service is created or updated
+
+> If the backend URL ever changes, the frontend must be redeployed to pick it up.
+
+### One-time AWS Setup
+
+1. **OIDC provider** — IAM → Identity providers → add `token.actions.githubusercontent.com` with audience `sts.amazonaws.com`
+2. **`github-actions` IAM role** — trusted by the OIDC provider scoped to `repo:BuddyLim/adpa:environment:DEV`; needs permissions for ECR push, App Runner create/update, and `iam:PassRole` on `AppRunnerECRRole`
+3. **`AppRunnerECRRole`** — trusted by `build.apprunner.amazonaws.com`, with `AmazonEC2ContainerRegistryReadOnly`
+
+### GitHub Secrets (DEV environment)
+
+| Secret           | Description                                                    |
+| ---------------- | -------------------------------------------------------------- |
+| `AWS_ACCOUNT_ID` | 12-digit AWS account number                                    |
+| `OPENAI_KEY`     | OpenAI API key                                                 |
+| `GCP_KEY`        | GCP service account key                                        |
+| `LOGFIRE_TOKEN`  | Pydantic Logfire token                                         |
+| `FRONTEND_URL`   | Frontend App Runner URL (injected into backend CORS allowlist) |
 
 ---
 

@@ -244,11 +244,13 @@ export type PipelineRunResult = z.infer<typeof PipelineRunResultSchema>
 
 // ─── Live chat generator ──────────────────────────────────────────────────
 
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
 async function* chatAnswer(
   question: string,
   conversationId?: string | null,
 ): AsyncGenerator<PipelineMessage> {
-  const initResponse = await fetch('http://localhost:8000/query', {
+  const initResponse = await fetch(`${API_BASE}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, conversation_id: conversationId ?? null }),
@@ -268,7 +270,7 @@ async function* chatAnswer(
   yield { type: 'conversation_started', conversation_id, title }
 
   const streamResponse = await fetch(
-    `http://localhost:8000/query/${task_id}/stream`,
+    `${API_BASE}/query/${task_id}/stream`,
   )
 
   if (!streamResponse.ok) {
@@ -324,7 +326,7 @@ export const conversationMessagesQueryOptions = (conversationId: string) =>
   queryOptions({
     queryKey: ['conversation-messages', conversationId],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:8000/conversations/${conversationId}/messages`)
+      const res = await fetch(`${API_BASE}/conversations/${conversationId}/messages`)
       if (!res.ok) throw new Error('Failed to load conversation messages')
       const data: unknown = await res.json()
       return ConversationMessagesResponseSchema.parse(data)
@@ -336,7 +338,7 @@ export const conversationResultsQueryOptions = (conversationId: string) =>
   queryOptions({
     queryKey: ['conversation-results', conversationId],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:8000/conversations/${conversationId}/results`)
+      const res = await fetch(`${API_BASE}/conversations/${conversationId}/results`)
       if (!res.ok) throw new Error('Failed to load conversation results')
       const data: unknown = await res.json()
       return ConversationResultsResponseSchema.parse(data)

@@ -1,0 +1,43 @@
+name: AWS Teardown (Manual)
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Tear down AWS resources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete App Runner services
+        run: |
+          for SERVICE in apda-backend apda-frontend; do
+            ARN=$(aws apprunner list-services \
+              --query "ServiceSummaryList[?ServiceName=='$SERVICE'].ServiceArn" \
+              --output text)
+            if [ -n "$ARN" ]; then
+              aws apprunner delete-service --service-arn $ARN
+              echo "Deleted $SERVICE"
+            else
+              echo "$SERVICE not found, skipping"
+            fi
+          done
+
+      - name: Delete ECR images
+        run: |
+          for REPO in apda/backend apda/frontend; do
+            aws ecr batch-delete-image \
+              --repository-name $REPO \
+              --image-ids imageTag=latest 2>/dev/null && echo "Cleared $REPO" || echo "$REPO not found, skipping"
+          done

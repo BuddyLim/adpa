@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment'
+        description: "Target environment"
         required: true
-        default: 'DEV'
+        default: "DEV"
         type: choice
         options: [DEV]
       service:
-        description: 'Which service to deploy'
+        description: "Which service to deploy"
         required: true
-        default: 'both'
+        default: "both"
         type: choice
         options: [both, backend, frontend]
 
@@ -101,7 +101,15 @@ jobs:
           SERVICE_ARN=$(aws apprunner list-services \
             --query "ServiceSummaryList[?ServiceName=='$BACKEND_SERVICE'].ServiceArn" \
             --output text)
-          aws apprunner wait service-running --service-arn $SERVICE_ARN
+          for i in $(seq 1 30); do
+            STATUS=$(aws apprunner describe-service --service-arn $SERVICE_ARN \
+              --query "Service.Status" --output text)
+            echo "Status: $STATUS"
+            [ "$STATUS" = "RUNNING" ] && exit 0
+            [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "UPDATE_FAILED" ] && exit 1
+            sleep 20
+          done
+          echo "Timed out waiting for service" && exit 1
 
       - name: Print backend URL
         run: |

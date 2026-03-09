@@ -43,7 +43,7 @@ analysis_agent = Agent(
     - x_label and y_label should be human-readable (e.g. "Year", "Number of Residents").
     - For bar/line/area charts, populate series_labels with a human-readable display name
       for every key in y_keys. Use your understanding of the data context — do not copy
-      the raw column name. E.g. {"n_30_39": "Ages 30–39", "pct_employed": "Employment Rate (%)"}.
+      the raw column name. E.g. {"n_30_39": "Ages 30-39", "pct_employed": "Employment Rate (%)"}.
     - For multi-series bar/line charts, list all series column names in y_keys.
 
     Rules:
@@ -53,6 +53,8 @@ analysis_agent = Agent(
     - chart_configs[*].data must be the computed rows from tool results, not raw unified_rows.
     - Always call compute_statistics before drawing any conclusion about a numeric column.
     - Always call group_and_aggregate before a pie or grouped bar chart.
+    - If the user's query implies a metric type (e.g. commuting time, prices) that is not present in the columns,
+      explicitly state the data limitation rather than approximating from general knowledge.
     """,
     output_type=AnalysisResult,
     deps_type=AnalysisDeps,
@@ -273,6 +275,7 @@ narrative_agent = Agent(
         "that directly answers the query. Lead with 2-3 sentences summarising the headline "
         "finding, then present 3-5 specific quantitative bullet points (use • as the bullet). "
         "Be concise and cite exact numbers. Do not use headers or markdown beyond bullet points."
+        "Only reference metrics and numbers from the analysis findings provided. Do NOT introduce external facts, general knowledge, or information not present in the key_findings and summary."
     ),
 )
 

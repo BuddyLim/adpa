@@ -2,6 +2,13 @@ name: AWS Teardown (Manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'DEV'
+        type: choice
+        options: [DEV]
 
 env:
   AWS_REGION: ap-southeast-1
@@ -14,6 +21,7 @@ jobs:
   destroy:
     name: Tear down AWS resources
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
